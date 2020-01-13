@@ -6,31 +6,35 @@
 namespace xenon
 {
 
+	namespace lib
+	{
+		extern void RtlInitializeCriticalSection(lib::XCRITICAL_SECTION* rtlCS);
+	}
+
 	//----
 
-	Graphics::Graphics(native::IMemory& memory, runtime::Symbols& symbols, const launcher::Commandline& commandline)
+	Graphics::Graphics(runtime::Symbols& symbols, const launcher::Commandline& commandline)
 		: m_gpuInitialized(0)
 	{
 		// bind symbols - VdGlobalDevice
-		m_nativeVdGlobalDevice.Alloc(memory, 4);
+		m_nativeVdGlobalDevice.Alloc(4);
 		m_nativeVdGlobalDevice.Write<uint32>(0, 0);
 		symbols.RegisterSymbol("VdGlobalDevice", m_nativeVdGlobalDevice.Data());
 
 		// bind symbols - VdGlobalXamDevice
-		m_nativeVdGlobalXamDevice.Alloc(memory, 4);
+		m_nativeVdGlobalXamDevice.Alloc(4);
 		m_nativeVdGlobalXamDevice.Write<uint32>(0, 0);
 		symbols.RegisterSymbol("VdGlobalXamDevice", m_nativeVdGlobalXamDevice.Data());
 
 		// bind symbols - VdGlobalXamDevice
-		m_nativeVdGpuClockInMHz.Alloc(memory, 4);
+		m_nativeVdGpuClockInMHz.Alloc(4);
 		m_nativeVdGpuClockInMHz.Write<uint32>(0, 500);
 		symbols.RegisterSymbol("VdGpuClockInMHz", m_nativeVdGpuClockInMHz.Data());
 
 		// bind symbols - VdGlobalXamDevice
-		m_nativeVdHSIOCalibrationLock.Alloc(memory, 28);
+		m_nativeVdHSIOCalibrationLock.Alloc(28);
 		symbols.RegisterSymbol("VdHSIOCalibrationLock", m_nativeVdHSIOCalibrationLock.Data());
-		extern void RtlInitializeCriticalSection(xnative::XCRITICAL_SECTION* rtlCS);
-		RtlInitializeCriticalSection((xnative::XCRITICAL_SECTION*) m_nativeVdHSIOCalibrationLock.Data());
+		lib::RtlInitializeCriticalSection((lib::XCRITICAL_SECTION*) m_nativeVdHSIOCalibrationLock.Data());
 
 		// bind the GPU register
 		symbols.RegisterMemoryIO(0x7FC80714, (runtime::TGlobalMemReadFunc) &Graphics::ReadGPUWord, (runtime::TGlobalMemWriteFunc) &Graphics::WriteGPUWord);

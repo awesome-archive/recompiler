@@ -89,6 +89,15 @@
     <ClCompile Include="runtimeException.cpp">
       <Filter>runtime</Filter>
     </ClCompile>
+    <ClCompile Include="bitset.cpp">
+      <Filter>utils</Filter>
+    </ClCompile>
+    <ClCompile Include="blockAllocator.cpp">
+      <Filter>utils</Filter>
+    </ClCompile>
+    <ClCompile Include="runtimeTraceFile.cpp">
+      <Filter>runtime</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="zlib\crc32.h">
@@ -197,6 +206,15 @@
     <ClInclude Include="runtimeExceptions.h">
       <Filter>runtime</Filter>
     </ClInclude>
+    <ClInclude Include="bitset.h">
+      <Filter>utils</Filter>
+    </ClInclude>
+    <ClInclude Include="blockAllocator.h">
+      <Filter>utils</Filter>
+    </ClInclude>
+    <ClInclude Include="runtimeTraceFile.h">
+      <Filter>runtime</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <Filter Include="zlib">
@@ -213,6 +231,9 @@
     </Filter>
     <Filter Include="native">
       <UniqueIdentifier>{36aee57b-4674-4269-bd37-cdeb70f5f8c6}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="utils">
+      <UniqueIdentifier>{6800e282-070e-4385-9842-bac794434535}</UniqueIdentifier>
     </Filter>
   </ItemGroup>
 </Project>

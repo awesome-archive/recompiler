@@ -31,7 +31,7 @@ CXenonGPURegisters::CXenonGPURegisters()
 
 const CXenonGPURegisters::Info& CXenonGPURegisters::GetInfo( const uint32 index )
 {
-	static Info RegInfo[ NUM_REGISTERS ];
+	static Info RegInfo[ NUM_REGISTER_RAWS ];
 	static bool RegInfoInitialized = false;
 
 	static Info InvalidReg = { "INVALID", eType_Unknown };
@@ -68,7 +68,7 @@ const CXenonGPURegisters::Info& CXenonGPURegisters::GetInfo( const uint32 index 
 	fclose(crap);*/
 
 	// index out of bounds
-	if ( index >= NUM_REGISTERS )
+	if ( index >= NUM_REGISTER_RAWS )
 		return InvalidReg;
 
 	// register invalid

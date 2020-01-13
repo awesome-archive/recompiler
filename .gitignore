@@ -15,11 +15,16 @@ bin/
 *.rar
 
 # remove wxWidgets since it's to big
-dev/external/wxWidgets-3.1.0/include/
-dev/external/wxWidgets-3.1.0/lib/
+#dev/external/wxWidgets-3.1.0/include/
+#dev/external/wxWidgets-3.1.0/lib/
 
 # projects
 projects/**/build/*
 projects/**/code/*
 projects/**/.temp/*
 projects/**/*.dll
+projects/
+*.tlog
+
+# tests
+tests/

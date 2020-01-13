@@ -8,7 +8,7 @@
 #include "xenonGPUTextures.h"
 #include "xenonGPUDumpWriter.h"
 
-//#pragma optimize("",off)
+#pragma optimize("",off)
 
 namespace Helper
 {
@@ -99,7 +99,7 @@ CXenonGPUState::CXenonGPUState()
 bool CXenonGPUState::IssueDraw( IXenonGPUAbstractLayer* abstractLayer, IXenonGPUDumpWriter* traceDump, const CXenonGPURegisters& regs, const CXenonGPUDirtyRegisterTracker& dirtyRegs, const DrawIndexState& ds )
 {
 	// global state
-	const XenonModeControl enableMode = (XenonModeControl)( regs[XenonGPURegister::REG_RB_MODECONTROL].m_dword & 0x7 );
+	const auto enableMode = (XenonModeControl)( regs[XenonGPURegister::REG_RB_MODECONTROL].m_dword & 0x7 );
 	if ( enableMode == XenonModeControl::Ignore )
 	{
 		GLog.Log( "Ignore draw!" );
@@ -110,13 +110,14 @@ bool CXenonGPUState::IssueDraw( IXenonGPUAbstractLayer* abstractLayer, IXenonGPU
 		return IssueCopy( abstractLayer, traceDump, regs );
 	}
 
-	// clear only
+	// skip draw when disabled
+	const auto surfaceEnableMode = regs[XenonGPURegister::REG_RB_SURFACE_INFO].m_dword & 0x3FFF;
+	if (surfaceEnableMode == 0) 
+		return true;
+
+	// crap
 	/*if (ds.m_primitiveType == XenonPrimitiveType::PrimitiveRectangleList && ds.m_indexCount == 3)
 	{
-		if (!UpdateViewportState(abstractLayer, regs))
-			return ReportFailedDraw("UpdateViewport failed");
-		if (!UpdateRenderTargets(abstractLayer, regs))
-			return ReportFailedDraw("UpdateRenderTargets failed");
 		return abstractLayer->DrawGeometry(regs, traceDump, ds);
 	}*/
 
@@ -370,8 +371,8 @@ bool CXenonGPUState::UpdateRenderTargets( IXenonGPUAbstractLayer* abstractLayer,
 	stateChanged |= Helper::UpdateRegister( regs, XenonGPURegister::REG_RB_DEPTH_INFO, m_rtState.regDepthInfo );
 
 	// check if state is up to date
-	/*if ( !stateChanged )
-		return true;*/
+	if ( !stateChanged )
+		return true;
 
 	// apply the state
 	return ApplyRenderTargets( abstractLayer, m_rtState, m_physicalRenderWidth, m_physicalRenderHeight );
@@ -395,8 +396,8 @@ bool CXenonGPUState::UpdateViewportState( IXenonGPUAbstractLayer* abstractLayer,
 	stateChanged |= Helper::UpdateRegister( regs, XenonGPURegister::REG_PA_CL_VPORT_ZSCALE, m_viewState.regPaClVportZscale );
 
 	// check if state is up to date
-	/*if ( !stateChanged )
-		return true;*/
+	if ( !stateChanged )
+		return true;
 
 	// apply the state
 	return ApplyViewportState( abstractLayer, m_viewState, m_physicalRenderWidth, m_physicalRenderHeight );
@@ -412,8 +413,8 @@ bool CXenonGPUState::UpdateRasterState( IXenonGPUAbstractLayer* abstractLayer, c
 	stateChanged |= Helper::UpdateRegister( regs, XenonGPURegister::REG_VGT_MULTI_PRIM_IB_RESET_INDX, m_rasterState.regMultiPrimIbResetIndex );
 
 	// check if state is up to date
-	/*if ( !stateChanged )
-		return true;*/
+	if ( !stateChanged )
+		return true;
 
 	// apply the state
 	return ApplyRasterState( abstractLayer, m_rasterState );
@@ -433,8 +434,8 @@ bool CXenonGPUState::UpdateBlendState( IXenonGPUAbstractLayer* abstractLayer, co
 	stateChanged |= Helper::UpdateRegister( regs, XenonGPURegister::REG_RB_BLEND_ALPHA, m_blendState.regRbBlendRGBA[3] );
 
 	// check if state is up to date
-	/*if ( !stateChanged )
-		return true;*/
+	//if ( !stateChanged )
+		//return true;
 
 	// apply the state
 	return ApplyBlendState( abstractLayer, m_blendState );
@@ -448,8 +449,8 @@ bool CXenonGPUState::UpdateDepthState( IXenonGPUAbstractLayer* abstractLayer, co
 	stateChanged |= Helper::UpdateRegister( regs, XenonGPURegister::REG_RB_STENCILREFMASK, m_depthState.regRbStencilRefMask );
 
 	// check if state is up to date
-	/*if ( !stateChanged )
-		return true;*/
+	if ( !stateChanged )
+		return true;
 
 	// apply the state
 	return ApplyDepthState( abstractLayer, m_depthState );
@@ -461,22 +462,26 @@ bool CXenonGPUState::ApplyRenderTargets( IXenonGPUAbstractLayer* abstractLayer, 
 	// http://fossies.org/dox/MesaLib-10.3.5/fd2__gmem_8c_source.html
 
 	// extract specific settings
-	const XenonModeControl enableMode = (XenonModeControl)( rtState.regModeControl & 0x7 );
-	const XenonMsaaSamples surfaceMSAA = XenonMsaaSamples::MSSA1X;// (XenonMsaaSamples)((rtState.regSurfaceInfo >> 16) & 3);
+	const auto enableMode = (XenonModeControl)( rtState.regModeControl & 0x7 );
+	const auto surfaceMSAA = (XenonMsaaSamples)((rtState.regSurfaceInfo >> 16) & 3);
 	const uint32 surfacePitch = rtState.regSurfaceInfo & 0x3FFF;
 
 	// NOTE: this setup is all f*cked, the MSAA is not supported ATM
-	if ( enableMode == XenonModeControl::ColorDepth )
+	// NOTE: THIS WAS FOUND TO BE SET TO BULLSHIT VALUES SOMETIMES
+	if (1)// enableMode == XenonModeControl::ColorDepth )
 	{
 		for ( uint32 rtIndex=0; rtIndex<4; ++rtIndex )
 		{
 			const uint32 rtInfo = rtState.regColorInfo[ rtIndex ];
 
+			// no rt
+			if (surfacePitch == 0)
+				continue;
+
 			// get color mask for this specific render target
 			const uint32 writeMask = (rtState.regColorMask >> (rtIndex * 4)) & 0xF;
 			if ( !writeMask )
 			{
-				// this RT is not used
 				abstractLayer->UnbindColorRenderTarget( rtIndex );
 				continue;
 			}

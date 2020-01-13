@@ -1,5 +1,6 @@
 #include "build.h"
 #include <algorithm>
+#include <Windows.h>
 
 ILogOutput::ILogOutput(ILogOutput* parent /*= nullptr*/)
 	: m_parent(nullptr)
@@ -50,6 +51,8 @@ void ILogOutput::Log(_Printf_format_string_ const char* txt, ...)
 		cur = cur->m_parent;
 	}
 
+	OutputDebugStringA(buffer);
+	OutputDebugStringA("\n");
 }
 
 void ILogOutput::Warn(_Printf_format_string_ const char* txt, ...)
@@ -67,6 +70,9 @@ void ILogOutput::Warn(_Printf_format_string_ const char* txt, ...)
 		cur->DoLog(LogLevel::Warning, buffer);
 		cur = cur->m_parent;
 	}
+
+	OutputDebugStringA(buffer);
+	OutputDebugStringA("\n");
 }
 
 void ILogOutput::Error(_Printf_format_string_ const char* txt, ...)
@@ -85,6 +91,8 @@ void ILogOutput::Error(_Printf_format_string_ const char* txt, ...)
 		cur = cur->m_parent;
 	}
 
+	OutputDebugStringA(buffer);
+	OutputDebugStringA("\n");
 }
 
 void ILogOutput::SetTaskName(_Printf_format_string_ const char* txt, ...)
@@ -104,7 +112,7 @@ void ILogOutput::SetTaskName(_Printf_format_string_ const char* txt, ...)
 	}
 }
 
-void ILogOutput::SetTaskProgress(int count, int max)
+void ILogOutput::SetTaskProgress(uint64_t count, uint64_t max)
 {
 	ILogOutput* cur = this;
 	while (cur != nullptr)
@@ -133,7 +141,7 @@ ILogOutput& ILogOutput::DevNull()
 	{
 		virtual void DoLog(const LogLevel, const char*) override {}
 		virtual void DoSetTaskName(const char*) override {}
-		virtual void DoSetTaskProgress(int, int) override {}
+		virtual void DoSetTaskProgress(uint64_t, uint64_t) override {}
 		virtual bool DoIsTaskCanceled() override { return false; }
 	};
 

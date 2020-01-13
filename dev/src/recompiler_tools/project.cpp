@@ -1,13 +1,77 @@
 #include "build.h"
 #include "project.h"
 #include "projectImage.h"
+#include "eventDispatcher.h"
 
 #include "../recompiler_core/platformDefinition.h"
 #include "../recompiler_core/platformLibrary.h"
 #include "../recompiler_core/internalFile.h"
+#include "../recompiler_core/decodingEnvironment.h"
+#include "../recompiler_core/image.h"
 
 namespace tools
 {
+
+	//---------------------------------------------------------------------------
+
+	ProjectBreakpointList::ProjectBreakpointList()
+	{}
+
+	void ProjectBreakpointList::Clear()
+	{
+		m_breakpoints.clear();
+	}
+
+	void ProjectBreakpointList::SetBreakpoint(const uint64 addr, const bool isSet)
+	{
+		const auto it = std::find(m_breakpoints.begin(), m_breakpoints.end(), addr);
+		if (isSet)
+		{
+			if (it == m_breakpoints.end())
+			{
+				m_breakpoints.push_back(addr);
+				EventDispatcher::GetInstance().PostEvent("BreakpointsChanged");
+			}
+		}
+		else
+		{
+			if (it != m_breakpoints.end())
+			{
+				m_breakpoints.erase(it);
+				EventDispatcher::GetInstance().PostEvent("BreakpointsChanged");
+			}
+		}
+	}
+
+	const bool ProjectBreakpointList::HasBreakpoint(const uint64 addr) const
+	{
+		const auto it = std::find(m_breakpoints.begin(), m_breakpoints.end(), addr);
+		return m_breakpoints.end() != it;
+	}
+
+	const bool ProjectBreakpointList::ToggleBreakpoint(const uint64 addr)
+	{
+		const auto newState = !HasBreakpoint(addr);
+		SetBreakpoint(addr, newState);
+		return newState;
+	}
+
+	static inline IBinaryFileWriter &operator<<(IBinaryFileWriter& file, const ProjectBreakpointList& s)
+	{
+		const auto list = s.GetAllBreakpoints();
+		file << list;
+		return file;
+	}
+
+	static inline IBinaryFileReader &operator >> (IBinaryFileReader& file, ProjectBreakpointList& s)
+	{
+		ProjectBreakpointList::TBreakpoints list;
+		file >> list;
+
+		for (const auto& addr : list)
+			s.SetBreakpoint(addr, true);
+		return file;
+	}
 
 	//---------------------------------------------------------------------------
 
@@ -33,6 +97,9 @@ namespace tools
 		, m_projectPath(projectFilePath)
 		, m_projectDir(wxFileName(projectFilePath).GetPath())
 		, m_isModified(false)
+		, m_currentDecodingContextStart(0)
+		, m_currentDecodingContextEnd(0)
+		, m_currentDecodingContext(nullptr)
 	{
 		m_projectDir += wxFileName::GetPathSeparator();
 	}
@@ -61,8 +128,23 @@ namespace tools
 
 	void Project::RemoveImage(const std::shared_ptr<ProjectImage>& image)
 	{
-		std::remove(m_images.begin(), m_images.end(), image);
-		MarkAsModified();
+		auto it = std::find(m_images.begin(), m_images.end(), image);
+		if (it != m_images.end())
+		{
+			m_images.erase(it);
+			MarkAsModified();
+		}
+	}
+
+	void Project::GetStartupImages(std::vector<std::shared_ptr<ProjectImage>>& outImages) const
+	{
+		for (const auto& img : m_images)
+		{
+			if (img->CanRun() && img->GetSettings().m_imageType == ProjectImageType::Application)
+			{
+				outImages.push_back(img);
+			}
+		}
 	}
 
 	bool Project::Save(ILogOutput& log)
@@ -98,10 +180,60 @@ namespace tools
 			}
 		}
 
+		// save breakpoints settings
+		{
+			FileChunk chunk(*writer, "Breakpoints");
+			*writer << m_breakpoints;
+		}
+
 		// saved
 		log.Log("Project: Saved project '%ls'", m_projectPath.c_str());
 		m_isModified = false;
 		return true;
+	}
+
+	std::shared_ptr<ProjectImage> Project::FindImageForAddress(const uint64 ip)
+	{
+		// linear search
+		for (const auto& projectImage : m_images)
+		{
+			const auto& env = projectImage->GetEnvironment();
+			const auto section = env.GetImage()->FindSectionForAddress(ip);
+			if (section != nullptr)
+			{
+				m_currentDecodingContextStart = section->GetVirtualOffset() + env.GetImage()->GetBaseAddress();
+				m_currentDecodingContextEnd = m_currentDecodingContextStart + section->GetVirtualSize();
+				m_currentDecodingContext = env.GetDecodingContext();
+				return projectImage;
+			}
+		}
+
+		// not found
+		return nullptr;
+	}
+
+	decoding::Context* Project::GetDecodingContext(const uint64 ip)
+	{
+		// use cached one
+		if (ip >= m_currentDecodingContextStart && ip < m_currentDecodingContextEnd)
+			return m_currentDecodingContext;
+
+		// find decoding context for the image that covers the IP range
+		for (const auto& projectImage : m_images)
+		{
+			const auto& env = projectImage->GetEnvironment();
+			const auto section = env.GetImage()->FindSectionForAddress(ip);
+			if (section != nullptr)
+			{
+				m_currentDecodingContextStart = section->GetVirtualOffset() + env.GetImage()->GetBaseAddress();
+				m_currentDecodingContextEnd = m_currentDecodingContextStart + section->GetVirtualSize();
+				m_currentDecodingContext = env.GetDecodingContext();
+				return m_currentDecodingContext;
+			}
+		}
+
+		// not found
+		return nullptr;
 	}
 
 	/*std::shared_ptr<Project> Project::LoadImageFile(ILogOutput& log, const std::wstring& imagePath, const std::wstring& projectPath)
@@ -218,6 +350,13 @@ namespace tools
 					}
 				}
 			}
+		}
+
+		// load breakpoints settings
+		{
+			FileChunk chunk(*reader, "Breakpoints");
+			if (reader)
+				*reader >> ret->m_breakpoints;
 		}
 
 		// return created project

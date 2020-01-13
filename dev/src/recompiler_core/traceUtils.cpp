@@ -1,10 +1,54 @@
 #include "build.h"
-#include "traceData.h"
+#include "traceDataFile.h"
 #include "traceUtils.h"
 #include "platformCPU.h"
 
 namespace trace
 {
+
+	int64 GetRegisterValueInteger(const platform::CPURegister* reg, const TRegisterDataFetchFunc& fetchFunc, const bool signExtend/*= true*/)
+	{
+		uint64 bitSize = reg->GetBitSize();
+		uint64 bitOffset = reg->GetBitOffset();
+
+		const auto* rootReg = reg;
+		while (rootReg->GetParent())
+		{
+			bitOffset += rootReg->GetParent()->GetBitOffset();
+			rootReg = rootReg->GetParent();
+		}
+
+		// get data
+		uint8_t rawDataBuf[64];
+		if (!fetchFunc(reg, rawDataBuf))
+			return 0;
+
+		// register is to big to be represented as single value
+		if (bitSize > 64)
+			return 0;
+
+		// apply bit offset
+		auto* rawData = &rawDataBuf[0];
+		rawData += (bitOffset / 8);
+		bitOffset &= 7;
+
+		// compute bit mask
+		const uint64 bitMask = (bitSize == 64) ? ~0ULL : ((1ULL << bitSize) - 1);
+		uint64 unsignedVal = *(const uint64 *)rawData & bitMask; // TODO: potential AV risk		
+
+		// sign extend to 64 bits if required
+		if (signExtend && (bitSize < 64))
+		{
+			const uint64 bitSign = (1ULL << (bitSize - 1));
+			if (unsignedVal)
+			{
+				const uint64 signExtendBits = ~((1ULL << bitSize) - 1); // 0x00000100 -> 0x000000FF -> 0xFFFFFF00
+				unsignedVal |= signExtendBits;
+			}
+		}
+
+		return (int64&)unsignedVal;
+	}
 
 	int64 GetRegisterValueInteger(const platform::CPURegister* reg, const DataFrame& frame, const bool signExtend/*= true*/)
 	{
@@ -88,9 +132,9 @@ namespace trace
 
 	static const RegDisplayFormat GetBestFormat(const platform::CPURegister* reg)
 	{
-		if (reg->GetType() == platform::EInstructionRegisterType::Wide)
-			return RegDisplayFormat::Hex; // we can use forced mode to show it 
-		else if (reg->GetType() == platform::EInstructionRegisterType::FloatingPoint)
+		if (reg->GetType() == platform::CPURegisterType::Wide)
+			return RegDisplayFormat::FloatingPoint;
+		else if (reg->GetType() == platform::CPURegisterType::FloatingPoint)
 			return RegDisplayFormat::FloatingPoint;
 
 		return RegDisplayFormat::Signed;
@@ -125,6 +169,28 @@ namespace trace
 
 	std::string GetRegisterValueText(const platform::CPURegister* reg, const DataFrame& frame, const RegDisplayFormat requestedFormat /*= RegDisplayFormat::Auto*/)
 	{
+		// invalid frame
+		if (frame.GetType() != FrameType::CpuInstruction)
+			return "-";
+
+		// get the data placement
+		const auto* rootReg = reg;
+		while (rootReg->GetParent())
+			rootReg = rootReg->GetParent();
+
+		// get data
+		const auto* rawData = frame.GetRegData(rootReg);
+		if (!rawData)
+			return std::string();
+
+		// format
+		return GetRegisterValueText(reg, rawData, requestedFormat);
+	}
+
+	std::string GetRegisterValueText(const platform::CPURegister* reg, const void* rawDataPtr, const RegDisplayFormat requestedFormat /*= RegDisplayFormat::Auto*/)
+	{
+		auto* rawData = (const uint8_t*)rawDataPtr;
+
 		// change format if required
 		auto format = (requestedFormat == RegDisplayFormat::Auto) ? GetBestFormat(reg) : requestedFormat;
 
@@ -137,11 +203,6 @@ namespace trace
 			bitOffset += rootReg->GetParent()->GetBitOffset();
 			rootReg = rootReg->GetParent();
 		}
-
-		// get data
-		const auto* rawData = frame.GetRegData(rootReg);
-		if (!rawData)
-			return std::string();
 
 		// apply bit offset
 		const auto numBytes = bitSize / 8;
@@ -171,20 +232,39 @@ namespace trace
 
 			PrependString(str, "%lld", (int64*)unsignedVal);
 		}
-		else if (format == RegDisplayFormat::FloatingPoint && (bitSize == 32))
+		else if (format == RegDisplayFormat::FloatingPoint && (bitSize == 32) && (reg->GetType() == platform::CPURegisterType::FloatingPoint))
 		{
 			const auto val = *(const float*)rawData;
 			PrependString(str, "%f", (double)val);
 		}
-		else if (format == RegDisplayFormat::FloatingPoint && (bitSize == 64))
+		else if (format == RegDisplayFormat::FloatingPoint && (bitSize == 64) && (reg->GetType() == platform::CPURegisterType::FloatingPoint))
 		{
 			const auto val = *(const double*)rawData;
 			PrependString(str, "%f", val);
 		}
+		else if (format == RegDisplayFormat::FloatingPoint && (reg->GetType() == platform::CPURegisterType::Wide))
+		{
+			const auto& val = (const float*)rawData;
+			PrependString(str, "%f %f %f %f", (double)val[0], (double)val[1], (double)val[2], (double)val[3]);
+		}
 		else if (format == RegDisplayFormat::Hex)
 		{
-			for (auto i = 0; i < numBytes; ++i )
-				PrependString(str, "%02X", (uint8)rawData[i]);
+			if (reg->GetBitSize() < 8)
+			{
+				for (auto i = 0; i < (int)reg->GetBitSize(); ++i)
+				{
+					const auto bit = ((*(const uint8_t*)rawData) & (1LLU << (bitOffset + i))) != 0;
+					PrependString(str, "%u", bit ? 1 : 0);
+				}
+				str += "b";
+			}
+			else
+			{
+				for (auto i = 0; i < numBytes; ++i)
+					PrependString(str, "%02X", (uint8)rawData[i]);
+
+				str += "h";
+			}
 		}
 		else if (format == RegDisplayFormat::ASCII)
 		{

@@ -27,6 +27,7 @@
 */
 
 #include "build.h"
+#include "xenonPlatform.h"
 #include "xenonLibNatives.h"
 #include "xenonGPUCommandBuffer.h"
 #include "xenonGPUExecutor.h"
@@ -36,6 +37,7 @@
 #include "xenonGPUTraceWriter.h"
 
 #include "dx11AbstractLayer.h"
+#include "../host_core/launcherCommandline.h"
 
 //-----------
 
@@ -51,13 +53,13 @@ CXenonGPUExecutor::CXenonGPUExecutor(IXenonGPUAbstractLayer* abstractionLayer, c
 	, m_traceDumpFile(nullptr)
 	, m_logWriter(nullptr)
 {
-	/*if (cmdLine.HasOption("gpulog"))
+	if (cmdLine.HasOption("gpulog"))
 	{
 		std::wstring gpuLogFile = cmdLine.GetOptionValueW("gpulog");
 		GLog.Log("GPU: Logging gpu activity to '%ls'", gpuLogFile.c_str());
 
 		m_logWriter = CXenonGPUTraceWriter::Create(gpuLogFile);
-	}*/
+	}
 }
 
 CXenonGPUExecutor::~CXenonGPUExecutor()
@@ -146,6 +148,7 @@ void CXenonGPUExecutor::RequestTraceDump()
 
 void CXenonGPUExecutor::SignalVBlank()
 {
+
 	if (GSuppressGPUInterrupts)
 		return;
 
@@ -617,7 +620,7 @@ bool CXenonGPUExecutor::ExecutePacketType3_WAIT_REG_MEM(CXenonGPUCommandBufferRe
 		else
 		{
 			// Register.
-			DEBUG_CHECK(pollRegAddr < m_registers.NUM_REGISTERS);
+			DEBUG_CHECK(pollRegAddr < m_registers.NUM_REGISTER_RAWS);
 			value = m_registers[pollRegAddr].m_dword;
 
 			// Sync
@@ -792,7 +795,7 @@ bool CXenonGPUExecutor::ExecutePacketType3_COND_WRITE(CXenonGPUCommandBufferRead
 	}
 	else
 	{
-		DEBUG_CHECK(pollRegAddr < m_registers.NUM_REGISTERS);
+		DEBUG_CHECK(pollRegAddr < m_registers.NUM_REGISTER_RAWS);
 		value = m_registers[pollRegAddr].m_dword;
 
 		// log the read
@@ -986,6 +989,7 @@ bool CXenonGPUExecutor::ExecutePacketType3_EVENT_WRITE_EXT(CXenonGPUCommandBuffe
 	cpu::mem::storeAddr(writeAddr + 6, extents[3]);
 	cpu::mem::storeAddr(writeAddr + 8, extents[4]);
 	cpu::mem::storeAddr(writeAddr + 10, extents[5]);
+	xenon::TagMemoryWrite(writeAddr, 12, "GPU_EVENT_WRITE_EXT");
 	return true;
 }
 
@@ -1128,7 +1132,7 @@ bool CXenonGPUExecutor::ExecutePacketType3_SET_CONSTANT(CXenonGPUCommandBufferRe
 			baseIndex += 0x4908;
 			break;
 
-		case 4:  // REGISTERS
+		case 4:  // REGISTER_RAWS
 			baseIndex += 0x2000;
 			break;
 
@@ -1188,7 +1192,7 @@ bool CXenonGPUExecutor::ExecutePacketType3_LOAD_ALU_CONSTANT(CXenonGPUCommandBuf
 		case 3:  // LOOP
 			index += 0x4908;
 			break;
-		case 4:  // REGISTERS
+		case 4:  // REGISTER_RAWS
 			index += 0x2000;
 			break;
 		default:
@@ -1320,7 +1324,7 @@ void CXenonGPUExecutor::WriteRegister(const XenonGPURegister registerIndex, cons
 
 void CXenonGPUExecutor::WriteRegister(const uint32 registerIndex, const uint32 registerData)
 {
-	if (registerIndex >= m_registers.NUM_REGISTERS)
+	if (registerIndex >= m_registers.NUM_REGISTER_RAWS)
 	{
 		GLog.Err("GPU: Trying to write to non existing register 0x%08X", registerIndex);
 		return;
@@ -1363,6 +1367,7 @@ void CXenonGPUExecutor::WriteRegister(const uint32 registerIndex, const uint32 r
 			// write
 			const uint32 writeAddr = GPlatform.GetMemory().TranslatePhysicalAddress(memAddr & ~0x3);
 			cpu::mem::storeAddr< uint32 >(writeAddr, registerData);
+			xenon::TagMemoryWrite(writeAddr, 4, "GPU_REG_WRITE");
 
 			// Add to trace
 			if (m_traceDumpFile)
@@ -1423,6 +1428,5 @@ void CXenonGPUExecutor::DispatchInterrupt(const uint32 source, const uint32 cpu)
 		m_logWriter->Writef("Dispatching CPU interrupt at %08Xh (source: %08Xh, data: %08Xh)", m_interruptAddr, source, m_interruptUserData);
 
 	uint64 args[2] = { source, m_interruptUserData };
-	const bool trace = (source == 1);
-	GPlatform.GetKernel().ExecuteInterrupt(cpuIndex, m_interruptAddr, args, ARRAYSIZE(args), trace);
+	GPlatform.GetKernel().ExecuteInterrupt(cpuIndex, m_interruptAddr, args, ARRAYSIZE(args), "GPUIRQ");
 }

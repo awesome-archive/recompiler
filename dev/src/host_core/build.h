@@ -1,11 +1,13 @@
 #pragma once
 
+#define NO_MINMAX
+
 #include <stdlib.h>
 #include <stdio.h>
 #include <math.h>
 #include <float.h>
 #include <winsock2.h>
-#include <Windows.h>
+//#include <Windows.h>
 
 #include <vector>
 #include <string>
@@ -13,6 +15,11 @@
 #include <map>
 #include <set>
 #include <algorithm>
+#include <atomic>
+#include <thread>
+#include <chrono>
+#include <ostream>
+#include <fstream>
 
 #include "launcherBase.h"
 #include "launcherOutputTTY.h"
@@ -24,4 +31,7 @@ namespace runtime
 
 	class RegisterBank;
 	class RegisterBankInfo;
+
+	class TraceFile;
+	class TraceWriter;
 }

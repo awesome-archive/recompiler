@@ -1,4 +1,3 @@
-MEM_READ
 #include "build.h"
 #include "xenonPlatform.h"
 #include "xenonKernel.h"
@@ -6,9 +5,16 @@ MEM_READ
 #include "xenonGraphics.h"
 #include "xenonCPUDevice.h"
 #include "xenonInput.h"
+#include "xenonMemory.h"
+#include "xenonUserManager.h"
+#include "xenonAudio.h"
+#include "xenonBindings.h"
+#include "xenonTimeBase.h"
 
 #include "../host_core/native.h"
 #include "../host_core/runtimeImage.h"
+#include "../host_core/runtimeTraceFile.h"
+#include "../host_core/runtimeTraceWriter.h"
 
 //-----------------------------------------------------------------------------
 
@@ -19,6 +25,25 @@ xenon::Platform GPlatform;
 namespace xenon
 {
 
+	///----
+
+	namespace lib
+	{
+		extern void RegisterXboxCRT(runtime::Symbols& symbols);
+		extern void RegisterXboxKernel(runtime::Symbols& symbols);
+		extern void RegisterXboxVideo(runtime::Symbols& symbols);
+		extern void RegisterXboxFiles(runtime::Symbols& symbols);
+		extern void RegisterXboxDebug(runtime::Symbols& symbols);
+		extern void RegisterXboxInput(runtime::Symbols& symbols);
+		extern void RegisterXboxXAM(runtime::Symbols& symbols);
+		extern void RegisterXboxAudio(runtime::Symbols& symbols);
+		extern void RegisterXboxNetworking(runtime::Symbols& symbols);
+		extern void RegisterXboxConfig(runtime::Symbols& symbols);
+		extern void RegisterXboxErrors(runtime::Symbols& symbols);
+		extern void RegisterXboxMemory(runtime::Symbols& symbols);
+
+	} // lib
+
 	Platform::Platform()
 		: m_kernel(nullptr)
 		, m_fileSys(nullptr)
@@ -27,6 +52,9 @@ namespace xenon
 		, m_interruptTable(nullptr)
 		, m_ioTable(nullptr)
 		, m_userExitRequested(false)
+		, m_traceFile(nullptr)
+		, m_platformLogFileEnabled(false)
+		, m_timeBase(nullptr)
 	{
 	}
 
@@ -104,6 +132,8 @@ namespace xenon
 			case 2: cpu::mem::storeAddr<uint16>((const uint32_t)address, *(const uint16_t*)inPtr); break;
 			case 1: cpu::mem::storeAddr<uint8>((const uint32_t)address, *(const uint8_t*)inPtr); break;
 		}
+
+		xenon::TagMemoryWrite(address, (uint32_t)size, "MappedMemWrite");
 	}
 
 	static void GlobalPortReadFunc(const uint64_t ip, const uint16_t portIndex, const uint64_t size, void* outPtr)
@@ -123,84 +153,92 @@ namespace xenon
 		// stats
 		GLog.Log("Runtime: Initializing Xenon runtime");
 
-		// setup memory
-		m_memory = nativeSystems.m_memory;
+		// create memory system
+		m_memory = new Memory(*nativeSystems.m_memory);
 
 		// initialize virtual memory
+		const uint32 prefferedVirtualBase = 0x40000000;
 		const uint32 virtualMemorySize = 512 << 20;
-		if (!nativeSystems.m_memory->InitializeVirtualMemory(virtualMemorySize))
+		if (!m_memory->InitializeVirtualMemory(prefferedVirtualBase, virtualMemorySize))
 			return false;
 
 		// initialize physical memory
+		const uint32 prefferedPhysicalBase = 0xC0000000;
 		const uint32 physicalMemorySize = 256 << 20;
-		if (!nativeSystems.m_memory->InitializePhysicalMemory(physicalMemorySize))
+		if (!m_memory->InitializePhysicalMemory(prefferedPhysicalBase, physicalMemorySize))
 			return false;
 
 		// create kernel
 		GLog.Log("Runtime: Initializing Xenon kernel");
 		m_kernel = new Kernel(nativeSystems, commandline);
 
-		// create file syste
+		// create file system
 		GLog.Log("Runtime: Initializing Xenon file system");
 		m_fileSys = new FileSystem(m_kernel, nativeSystems.m_fileSystem, commandline);
 
 		// create graphics system
 		GLog.Log("Runtime: Initializing Xenon graphics");
-		m_graphics = new Graphics(*nativeSystems.m_memory, symbols, commandline);
+		m_graphics = new Graphics(symbols, commandline);
 
 		// create input system
 		GLog.Log("Runtime: Initializing Xenon input system");
 		m_inputSys = new InputSystem(m_kernel, commandline);
 
-		// initialize config data
-		extern void InitializeXboxConfig();
-		InitializeXboxConfig();
+		// create the user profile manager
+		GLog.Log("Runtime: Initializing Xenon user profile manager");
+		m_users = new UserProfileManager();
+
+		// create the audio system
+		GLog.Log("Runtime: Initializing Xenon audio system");
+		m_audio = new Audio(symbols, commandline);
+
+		// create the time base system
+		GLog.Log("Runtime: Initializing Xenon time base");
+		m_timeBase = new TimeBase(commandline);
 
 		// create symbols
-		extern void RegisterXboxKernel(runtime::Symbols& symbols);
-		RegisterXboxKernel(symbols);
-		extern void RegisterXboxUtils(runtime::Symbols& symbols);
-		RegisterXboxUtils(symbols);
-		extern void RegisterXboxVideo(runtime::Symbols& symbols);
-		RegisterXboxVideo(symbols);
-		extern void RegisterXboxThreads(runtime::Symbols& symbols);
-		RegisterXboxThreads(symbols);
-		extern void RegisterXboxFiles(runtime::Symbols& symbols);
-		RegisterXboxFiles(symbols);
-		extern void RegisterXboxDebug(runtime::Symbols& symbols);
-		RegisterXboxDebug(symbols);
-		extern void RegisterXboxInput(runtime::Symbols& symbols);
-		RegisterXboxInput(symbols);
+		lib::RegisterXboxCRT(symbols);
+		lib::RegisterXboxKernel(symbols);
+		lib::RegisterXboxVideo(symbols);
+		lib::RegisterXboxFiles(symbols);
+		lib::RegisterXboxDebug(symbols);
+		lib::RegisterXboxInput(symbols);
+		lib::RegisterXboxXAM(symbols);
+		lib::RegisterXboxAudio(symbols);
+		lib::RegisterXboxNetworking(symbols);
+		lib::RegisterXboxConfig(symbols);
+		lib::RegisterXboxErrors(symbols);
+		lib::RegisterXboxMemory(symbols);
 
 		// register the process native data
 
-		m_nativeKeDebugMonitorData.Alloc(*m_memory, 256);
+		m_nativeKeDebugMonitorData.Alloc(256);
 		symbols.RegisterSymbol("KeDebugMonitorData", m_nativeKeDebugMonitorData.Data());
 
-		m_nativeKeCertMonitorData.Alloc(*m_memory, 4);
+		m_nativeKeCertMonitorData.Alloc(4);
 		symbols.RegisterSymbol("KeCertMonitorData", m_nativeKeCertMonitorData.Data());
 
 		// setup basics - XexExecutableModuleHandle
-		m_nativeXexExecutableModuleHandle.Alloc(*m_memory, 2048);
-		m_nativeXexExecutableModuleHandlePtr.Alloc(*m_memory, 4);
+		m_nativeXexExecutableModuleHandle.Alloc(2048);
+		m_nativeXexExecutableModuleHandlePtr.Alloc(4);
 		symbols.RegisterSymbol("XexExecutableModuleHandle", m_nativeXexExecutableModuleHandlePtr.Data());
 		m_nativeXexExecutableModuleHandlePtr.Write<uint32>(0, (uint32)m_nativeXexExecutableModuleHandle.Data());
 		m_nativeXexExecutableModuleHandle.Write<uint32>(0, 0x4000000);
 		m_nativeXexExecutableModuleHandle.Write<uint32>(0x58, 0x80101100); // from actual memory
 
 		// setup basics - XboxHardwareInfo
-		m_nativeXboxHardwareInfo.Alloc(*m_memory, 16);
+		m_nativeXboxHardwareInfo.Alloc(16);
 		symbols.RegisterSymbol("XboxHardwareInfo", m_nativeXboxHardwareInfo.Data());
 		m_nativeXboxHardwareInfo.Write<uint32>(0, 0x00000000); // flags
 		m_nativeXboxHardwareInfo.Write<uint8>(4, 0x6); // num cpus
 
 		// setup basics - ExLoadedCommandLine
-		m_nativeExLoadedCommandLine.Alloc(*m_memory, 1024);
+		m_nativeExLoadedCommandLine.Alloc(1024);
 		symbols.RegisterSymbol("ExLoadedCommandLine", m_nativeExLoadedCommandLine.Data());
 		memcpy((void*)m_nativeExLoadedCommandLine.Data(), "default.xex", strlen("default.xex") + 1);
 
 		// setup basics - XboxKrnlVersion
-		m_nativeXboxKrnlVersion.Alloc(*m_memory, 8);
+		m_nativeXboxKrnlVersion.Alloc(8);
 		symbols.RegisterSymbol("XboxKrnlVersion", m_nativeXboxKrnlVersion.Data());
 		m_nativeXboxKrnlVersion.Write<uint16>(0, 2);
 		m_nativeXboxKrnlVersion.Write<uint16>(2, 0xFFFF);
@@ -208,11 +246,11 @@ namespace xenon
 		m_nativeXboxKrnlVersion.Write<uint16>(6, 0xFFFF);
 
 		// setup basics - KeTimeStampBundle
-		m_nativeKeTimeStampBundle.Alloc(*m_memory, 24);
+		m_nativeKeTimeStampBundle.Alloc(24);
 		symbols.RegisterSymbol("KeTimeStampBundle", m_nativeKeTimeStampBundle.Data());
 
 		// process object
-		m_nativeExThreadObjectType.Alloc(*m_memory, 4);
+		m_nativeExThreadObjectType.Alloc(4);
 		m_nativeExThreadObjectType.Write<uint32>(0, 0xD01BBEEF);
 		symbols.RegisterSymbol("ExThreadObjectType", m_nativeExThreadObjectType.Data());
 
@@ -235,20 +273,97 @@ namespace xenon
 		m_ioTable->PORT_READ = &GlobalPortReadFunc;
 		m_ioTable->PORT_WRITE = &GlobalPortWriteFunc;
 
+		// create the trace file
+		{
+			const auto traceFileName = commandline.GetOptionValueW("trace");
+			if (!traceFileName.empty())
+			{
+				// stats
+				GLog.Log("Runtime: Tracing executed instructions to '%ls'", traceFileName.c_str());
+
+				// get the trigger address
+				uint64_t triggerAddress = 0;
+				const auto triggerAddressText = commandline.GetOptionValueA("traceTrigger");
+				if (!triggerAddressText.empty())
+				{
+					triggerAddress = strtoull(triggerAddressText.c_str(), nullptr, 16);
+				}
+
+				// create the trace file
+				m_traceFile = runtime::TraceFile::Create(CPU_RegisterBankInfo::GetInstance(), traceFileName, triggerAddress);
+				if (!m_traceFile)
+				{
+					GLog.Err("Runtime: Failed to create the trace file");
+					return false;
+				}
+			}
+		}
+
+		// create platform log
+		{
+			const auto platformLogFileName = commandline.GetOptionValueW("platformLog");
+			if (!platformLogFileName.empty())
+			{
+				// stats
+				GLog.Log("Runtime: Platform log will be written to '%ls'", platformLogFileName.c_str());
+
+				// open the file
+				m_platformLogFile.open(platformLogFileName, std::ios::out);
+				if (m_platformLogFile.fail())
+				{
+					GLog.Err("Runtime: Failed to create platform log file");
+					return false;
+				}
+				else
+				{
+					m_platformLogFileEnabled = true;
+				}
+			}
+		}
+
+		// create system function tracer
+		{
+			if (commandline.HasOption("callLog"))
+			{
+				const auto callLogFileName = commandline.GetOptionValueW("callLog");
+				if (callLogFileName.empty())
+				{
+					GLog.Log("Runtime: Call log enabled");
+					lib::binding::FunctionInterface::BindFunctionLogger(new lib::binding::StdOutFunctionCallLog());
+				}
+				else
+				{
+					GLog.Log("Runtime: Call log enabled to file '%ls'", callLogFileName.c_str());
+					lib::binding::FunctionInterface::BindFunctionLogger(new lib::binding::FileFunctionCallLog(callLogFileName));
+				}
+			}
+		}
+
 		GLog.Log("Runtime: Xenon platform initialized");
 		return true;
 	}
 
 	void Platform::Shutdown()
 	{
+		m_kernel->StopAllThreads();
+
+		delete m_timeBase;
+		m_timeBase = nullptr;
+
+		delete m_traceFile;
+		m_traceFile = nullptr;
+
+		delete m_users;
+		m_users = nullptr;
+
 		delete m_graphics;
 		m_graphics = nullptr;
 
+		delete m_audio;
+		m_audio = nullptr;
+
 		delete m_fileSys;
 		m_fileSys = nullptr;
-
-		delete m_kernel;
-		m_kernel = nullptr;
 
 		delete m_inputSys;
 		m_inputSys = nullptr;
@@ -258,11 +373,29 @@ namespace xenon
 
 		delete m_ioTable;
 		m_ioTable = nullptr;
+
+		delete m_kernel;
+		m_kernel = nullptr;
+
+		delete m_memory;
+		m_memory = nullptr;
 	}
 
 	void Platform::RequestUserExit()
 	{
 		m_userExitRequested = true;
+	}
+
+	void Platform::DebugTrace(const char* txt)
+	{
+		if (m_platformLogFileEnabled)
+		{
+			m_platformLogFile << txt;
+		}
+		else
+		{
+			GLog.Log("OutputDebugString: %hs", txt);
+		}
 	}
 
 	int Platform::RunImage(const runtime::Image& image)
@@ -277,6 +410,7 @@ namespace xenon
 		mainThreadParams.m_suspended = false;
 
 		// create main thread
+		CreateSystemTraceMemoryWriter();
 		m_kernel->CreateThread(mainThreadParams);
 
 		// main loop
@@ -289,28 +423,73 @@ namespace xenon
 				break;
 			}
 
-			// exit
-			if ((GetAsyncKeyState(VK_F10) & 0x8000) && (GetAsyncKeyState(VK_F12) & 0x8000))
-			{
-				GLog.Err("Runtime: External request to quit");
-				break;
-			}
+			// wait before iterations so we don't consume to much CPU
+			std::this_thread::sleep_for(std::chrono::milliseconds(5));
 
-			// on demand trace dump
-			if ((GetAsyncKeyState(VK_F3) & 0x8000))
-			{
-				GLog.Err("Runtime: Requesting trace dump");
-				m_graphics->RequestTraceDump();
-			}
-
-			// TODO: update GPU
-			Sleep(5);
+			// flush the file
+			if (m_platformLogFileEnabled)
+				m_platformLogFile.flush();
 		}
 
 		// exit
-		Sleep(1000);
 		return 0;
 	}
+
+	//--
+
+	__declspec(thread) 	runtime::TraceWriter* GMemoryTraceWriter = nullptr;
+
+	runtime::TraceWriter* BindMemoryTraceWriter(runtime::TraceWriter* writer)
+	{
+		auto* cur = GMemoryTraceWriter;
+		GMemoryTraceWriter = writer;
+		return cur;
+	}
+
+	void CreateSystemTraceMemoryWriter()
+	{
+		if (!GMemoryTraceWriter)
+		{
+			auto* traceFile = GPlatform.GetTraceFile();
+			if (traceFile)
+				GMemoryTraceWriter = traceFile->CreateInterruptWriter("SYSTEM");
+		}
+	}
+
+	void TagMemoryWrite(const void* ptr, const uint32 size, const char* txt, ...)
+	{
+		auto* curThreadWriter = GMemoryTraceWriter;
+		if (!curThreadWriter)
+			return;
+
+
+		char textBuffer[512];
+		va_list args;
+
+		va_start(args, txt);
+		vsprintf_s(textBuffer, txt, args);
+		va_end(args);
+
+		curThreadWriter->AddMemoryWrite((uint64)ptr, size, ptr, textBuffer);
+	}
+
+	void TagMemoryWrite(const uint64 addr, const uint32 size, const char* txt, ...)
+	{
+		auto* curThreadWriter = GMemoryTraceWriter;
+		if (!curThreadWriter)
+			return;
+
+		char textBuffer[512];
+		va_list args;
+
+		va_start(args, txt);
+		vsprintf_s(textBuffer, txt, args);
+		va_end(args);
+
+		curThreadWriter->AddMemoryWrite(addr, size, (const void*)addr, textBuffer);
+	}
+
+	//--
 
 } // xenon
 

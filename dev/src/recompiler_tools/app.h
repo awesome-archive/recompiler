@@ -23,6 +23,12 @@ namespace tools
 		// register project in the list of recent project file
 		void AddProject(const wxString& path);
 
+		// remove project from list, returns true if removed
+		bool RemoveProject(const wxString& path);
+
+		// clear project list
+		void ClearList();
+
 	private:
 		wxArrayString m_projects;
 	};
@@ -84,7 +90,7 @@ namespace tools
 
 		// settings
 		RecentProjectFiles m_recentProjectPaths;
-
+		
 		// internal events
 		virtual bool OnInit();
 		virtual int OnExit();

@@ -26,10 +26,31 @@ namespace tools
 
 	void RecentProjectFiles::AddProject(const wxString& path)
 	{
+		// move from back to front
 		if (m_projects.Index(path) != -1)
 			m_projects.Remove(path);
 
+		// limit the size
+		while (m_projects.size() > 8)
+			m_projects.pop_back();
+
 		m_projects.Insert(path, 0);
+	}
+
+	bool RecentProjectFiles::RemoveProject(const wxString& path)
+	{
+		if (m_projects.Index(path) != -1)
+		{
+			m_projects.Remove(path);
+			return true;
+		}
+
+		return false;
+	}
+
+	void RecentProjectFiles::ClearList()
+	{
+		m_projects.clear();
 	}
 
 	//---
@@ -78,16 +99,9 @@ namespace tools
 
 	bool App::OnInit()
 	{
-		//	LoadLibraryA( "comctl32.dll" );
-		//InitCommonControls();
-
 		// app name
 		SetVendorName(wxT("Recompiler"));
 		SetAppName(wxT("Recompiler v1.0"));
-
-		/// initialize GDI+
-		//Gdiplus::GdiplusStartupInput gdiplusStartupInput;
-		//Gdiplus::GdiplusStartup(&m_gdiplusToken, &gdiplusStartupInput, NULL);
 
 		// initialize XML resources
 		wxInitAllImageHandlers();

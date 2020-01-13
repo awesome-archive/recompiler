@@ -37,6 +37,9 @@
     <OutDir>$(SolutionDir)..\..\_bin\$(Configuration)\</OutDir>
     <IntDir>$(SolutionDir)..\..\_temp\$(Configuration)\$(ProjectName)\</IntDir>
   </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <LinkIncremental>false</LinkIncremental>
+  </PropertyGroup>
   <ItemDefinitionGroup>
     <Link>
       <OutputFile>$(TargetDir)$(ProjectName)$(TargetExt)</OutputFile>
@@ -78,7 +81,7 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClCompile Include="dx11AbstarctLayer.cpp" />
+    <ClCompile Include="dx11AbstractLayer.cpp" />
     <ClCompile Include="dx11FetchLayout.cpp" />
     <ClCompile Include="dx11GeometryBuffer.cpp" />
     <ClCompile Include="dx11GeometryDrawer.cpp" />
@@ -102,6 +105,8 @@
     <ClCompile Include="dx11TextureManager.cpp" />
     <ClCompile Include="dx11Utils.cpp" />
     <ClInclude Include="build.h" />
+    <ClCompile Include="xenonAudio.cpp" />
+    <ClCompile Include="xenonBindings.cpp" />
     <ClCompile Include="xenonCPU.cpp" />
     <ClCompile Include="xenonCPUDevice.cpp" />
     <ClCompile Include="xenonInplaceExecution.cpp" />
@@ -125,17 +130,26 @@
       <PrecompiledHeader>Create</PrecompiledHeader>
     </ClCompile>
     <ClCompile Include="xenonInput.cpp" />
+    <ClCompile Include="xenonLibAudio.cpp" />
+    <ClCompile Include="xenonLibConfig.cpp" />
+    <ClCompile Include="xenonLibCRT.cpp" />
     <ClCompile Include="xenonLibDebug.cpp" />
+    <ClCompile Include="xenonLibErrors.cpp" />
     <ClCompile Include="xenonLibFiles.cpp" />
     <ClCompile Include="xenonLibInput.cpp" />
+    <ClCompile Include="xenonLibMemory.cpp" />
     <ClCompile Include="xenonLibNatives.cpp" />
-    <ClCompile Include="xenonLibThreads.cpp" />
-    <ClCompile Include="xenonLibUtils.cpp" />
+    <ClCompile Include="xenonLibNet.cpp" />
+    <ClCompile Include="xenonLib.cpp" />
     <ClCompile Include="xenonLibVideo.cpp" />
     <ClCompile Include="xenonLibKernel.cpp" />
     <ClCompile Include="xenonKernel.cpp" />
+    <ClCompile Include="xenonLibXAM.cpp" />
+    <ClCompile Include="xenonMemory.cpp" />
     <ClCompile Include="xenonPlatform.cpp" />
     <ClCompile Include="xenonThread.cpp" />
+    <ClCompile Include="xenonTimeBase.cpp" />
+    <ClCompile Include="xenonUserManager.cpp" />
     <ClCompile Include="xenonUtils.cpp" />
   </ItemGroup>
   <ItemGroup>
@@ -165,6 +179,8 @@
     <ClInclude Include="dx11TextureManager.h" />
     <ClInclude Include="dx11Utils.h" />
     <ClInclude Include="shaders\edramCommon.h" />
+    <ClInclude Include="xenonAudio.h" />
+    <ClInclude Include="xenonBindings.h" />
     <ClInclude Include="xenonCPUDevice.h" />
     <ClInclude Include="xenonInplaceExecution.h" />
     <ClInclude Include="xenonGPUAbstractLayer.h" />
@@ -192,10 +208,13 @@
     <ClInclude Include="xenonGraphics.h" />
     <ClInclude Include="xenonInput.h" />
     <ClInclude Include="xenonLibNatives.h" />
-    <ClInclude Include="xenonLibUtils.h" />
+    <ClInclude Include="xenonLib.h" />
     <ClInclude Include="xenonKernel.h" />
+    <ClInclude Include="xenonMemory.h" />
     <ClInclude Include="xenonPlatform.h" />
     <ClInclude Include="xenonThread.h" />
+    <ClInclude Include="xenonTimeBase.h" />
+    <ClInclude Include="xenonUserManager.h" />
     <ClInclude Include="xenonUtils.h" />
   </ItemGroup>
   <ItemGroup>

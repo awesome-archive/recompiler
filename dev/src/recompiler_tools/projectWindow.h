@@ -4,6 +4,7 @@ namespace tools
 {
 	class ProjectMainTab;
 	class ProjectImageTab;
+	class ProjectTraceTab;
 
 	// type of the tab
 	enum class ProjectTabType
@@ -14,22 +15,7 @@ namespace tools
 		TraceSession,
 	};
 
-	// tab in the project window
-	class ProjectTab : public wxPanel
-	{
-		DECLARE_EVENT_TABLE();
-
-	public:
-		ProjectTab(ProjectWindow* projectWindow, wxWindow* tabs, const ProjectTabType tabType);
-
-		inline const ProjectTabType GetTabType() const { return m_tabType; }
-
-		inline ProjectWindow* GetProjectWindow() const { return m_projectWindow; }
-
-	private:
-		ProjectWindow* m_projectWindow;
-		ProjectTabType m_tabType;
-	};
+	class ProjectTab;
 
 	// main project frame
 	class ProjectWindow : public wxFrame
@@ -51,9 +37,6 @@ namespace tools
 		// if no image is found this function returns false
 		bool NavigateToStaticAddress(const uint64 address);
 
-		// add image to the project
-		bool ImportImage(const std::wstring& imageImportPath);
-
 		//--
 
 		// get current focused tab
@@ -61,6 +44,9 @@ namespace tools
 
 		// get/create tab for given project image
 		ProjectImageTab* GetImageTab(const std::shared_ptr<ProjectImage>& img, const bool createIfMissing = true, const bool focus = true);
+
+		// create the trace tab
+		ProjectTraceTab* GetTraceTab(std::unique_ptr<trace::DataFile>& data, const bool focus = true);
 
 	protected:
 		void OnActivate(wxActivateEvent& event);
@@ -73,11 +59,37 @@ namespace tools
 		void OnExitApp(wxCommandEvent& event);
 		void OnOpenLog(wxCommandEvent& event);
 
+		void OnFindSymbol(wxCommandEvent& evt);
+		void OnGoToAddress(wxCommandEvent& evt);
+
+		void OnImageHistoryNext(wxCommandEvent& evt);
+		void OnImageHistoryPrevious(wxCommandEvent& evt);
+		void OnImageFollowAddress(wxCommandEvent& evt);
+		void OnImageUnfollowAddress(wxCommandEvent& evt);
+
+		void OnTraceHorizontalPrev(wxCommandEvent& evt);
+		void OnTraceHorizontalNext(wxCommandEvent& evt);
+		void OnTraceToLocalStart(wxCommandEvent& evt);
+		void OnTraceToLocalEnd(wxCommandEvent& evt);
+		void OnTraceToGlobalStart(wxCommandEvent& evt);
+		void OnTraceToGlobalEnd(wxCommandEvent& evt);
+		void OnTraceFreeRunForward(wxCommandEvent& evt);
+		void OnTraceFreeRunBackward(wxCommandEvent& evt);
+		void OnTraceToggleBreakpoint(wxCommandEvent& evt);
+		void OnTraceGlobalPrev(wxCommandEvent& evt);
+		void OnTraceLocalPrev(wxCommandEvent& evt);
+		void OnTraceLocalNext(wxCommandEvent& evt);
+		void OnTraceGlobalNext(wxCommandEvent& evt);
+		void OnTraceSyncPos(wxCommandEvent& evt);
+
 		void CreateLayout();
 		void UpdateUI();
 
 		void ToggleCommand(const unsigned int id, const bool state);
 		void EnableCommand(const unsigned int id, const bool state);
+
+		INavigationHelper* GetNavigatorHelperForCurrentTab();
+		bool NavigateCurrentTab(const NavigationType type);
 		
 		//---
 
@@ -91,6 +103,25 @@ namespace tools
 
 		// loaded project
 		std::shared_ptr<Project> m_project;
+	};
+
+	// tab in the project window
+	class ProjectTab : public wxPanel
+	{
+		DECLARE_EVENT_TABLE();
+
+	public:
+		ProjectTab(ProjectWindow* projectWindow, wxWindow* tabs, const ProjectTabType tabType);
+
+		inline const ProjectTabType GetTabType() const { return m_tabType; }
+
+		inline ProjectWindow* GetProjectWindow() const { return m_projectWindow; }
+
+		inline const std::shared_ptr<Project>& GetProject() const { return m_projectWindow->GetProject(); }
+
+	private:
+		ProjectWindow* m_projectWindow;
+		ProjectTabType m_tabType;
 	};
 
 } // tools

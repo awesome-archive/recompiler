@@ -336,7 +336,7 @@ const bool CodeGeneratorXenon::Emit(class ILogOutput& log, class code::IGenerato
 		for (uint32 j = 0; j<block->m_instructions.size(); ++j)
 		{
 			const Instruction* instr = block->m_instructions[j];
-			const uint32 codeAddress = instr->m_address;
+			const uint64 codeAddress = instr->m_address;
 
 			// emit original code
 			{
@@ -1286,7 +1286,7 @@ bool decoding::InterfaceXenon::ExportSingleInstruction(ILogOutput& log, const de
 			{
 				if (op == "bclrl")
 				{
-					sprintf_s(branchCode, sizeof(branchCode), "TReg tempLR = regs.LR; regs.LR = 0x%08X; return (uint32)tempLR;",
+					sprintf_s(branchCode, sizeof(branchCode), "auto tempLR = regs.LR; regs.LR = 0x%08X; return (uint32)tempLR;",
 						address + 4);
 					//exitWithUnconditionalBranch = true;
 				}

@@ -1,5 +1,7 @@
 #pragma once
 
+#include "projectAddressHistory.h"
+
 namespace tools
 {
 	struct BuildTask;
@@ -116,6 +118,9 @@ namespace tools
 
 		// create image
 		static std::shared_ptr<ProjectImage> Create(ILogOutput& log, Project* project, const std::wstring& imageImportPath);
+
+		// load existing
+		static std::shared_ptr<ProjectImage> Load(ILogOutput& log, Project* project, const std::wstring& imageImportPath);
 
 	public:
 		/// owning project

@@ -59,6 +59,13 @@ namespace decoding
 			eReg_Both = 3,
 		};
 
+		enum EMemoryWriteMode
+		{
+			eMemoryWriteMode_Normal = 0,
+			eMemoryWriteMode_LeftAligned, // write the left-aligned part only
+			eMemoryWriteMode_RightAligned, // write the right-aligned part only
+		};
+
 		// instruction address and flags
 		uint32		m_codeAddress;
 		uint32		m_codeFlags;
@@ -75,6 +82,7 @@ namespace decoding
 		uint32							m_memoryAddressMask;
 		uint32							m_memoryFlags;
 		uint32							m_memorySize;
+		EMemoryWriteMode				m_memoryWriteMode;
 
 		// registers read (a fully modified register is NOT a dependency)
 		const platform::CPURegister*	m_registersDependencies[ MAX_REGISTERS ];
@@ -94,6 +102,10 @@ namespace decoding
 
 		// compute memory address used by this instruction
 		bool ComputeMemoryAddress(const trace::DataFrame& data, uint64& outAddress) const;
+
+		// compute memory address used by this instruction
+		typedef std::function<bool(const platform::CPURegister* reg, void* outData)> TRegisterDataFetchFunc;
+		bool ComputeMemoryAddress(const TRegisterDataFetchFunc& regDataFetch, uint64& outAddress) const;
 
 		// compute branch target address
 		bool ComputeBranchTargetAddress(const trace::DataFrame& data, uint64& outAddress) const;

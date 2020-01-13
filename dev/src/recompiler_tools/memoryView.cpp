@@ -208,17 +208,17 @@ namespace tools
 		EVT_CHAR_HOOK(MemoryView::OnCharHook)
 		EVT_SCROLLWIN(MemoryView::OnScroll)
 		EVT_SIZE(MemoryView::OnSize)
-		END_EVENT_TABLE()
+	END_EVENT_TABLE()
 
-		MemoryView::DrawingStyle::DrawingStyle()
+	MemoryView::DrawingStyle::DrawingStyle()
 		: m_lineHeight(18)
 		, m_lineSeparation(0)
-		, m_addressOffset(20)
+		, m_addressOffset(36)
 		, m_hitcountSize(40)
 		, m_dataOffset(100)
 		, m_textOffset(400)
 		, m_tabSize(100)
-		, m_markerWidth(8)
+		, m_markerWidth(18)
 		, m_drawHitCount(false)
 	{
 		wxFontInfo fontInfo(8);
@@ -270,6 +270,7 @@ namespace tools
 		wxColour markertColors[eDrawingMarker_MAX];
 		markertColors[eDrawingMarker_Visited] = wxColour(128, 150, 128);
 		markertColors[eDrawingMarker_Breakpoint] = wxColour(200, 128, 128);
+		markertColors[eDrawingMarker_TraceCurrent] = wxColour(255, 173, 33);
 
 		// create brushes/pens
 		for (uint32 i = 0; i<eDrawingMarker_MAX; ++i)
@@ -291,6 +292,9 @@ namespace tools
 		, m_firstVisibleLine(0)
 		, m_selectionDragMode(false)
 	{
+		Event("BreakpointsChanged") += [this](const EventID& id, const EventArgs& args) {
+			Refresh();
+		};
 	}
 
 	MemoryView::~MemoryView()
@@ -611,20 +615,6 @@ namespace tools
 		}
 	}
 
-	void MemoryView::NavigateSelection()
-	{
-		if (nullptr != m_view)
-		{
-			uint32 selectionStart = 0, selectionEnd = 0;
-			if (GetSelectionOffsets(selectionStart, selectionEnd))
-			{
-				const bool bShift = wxGetKeyState(WXK_SHIFT);
-				m_view->Navigate(this, selectionStart, selectionEnd, bShift);
-				Refresh();
-			}
-		}
-	}
-
 	void MemoryView::UpdateScrollbar()
 	{
 		// all lines in the view
@@ -936,13 +926,6 @@ namespace tools
 				bool drawCode = true;
 				bool drawHitCount = false;
 
-				// draw hit count only if enabled and nonzero
-				uint32 hitCount = 0;
-				if (m_style.m_drawHitCount && (numLinesDrawn == (numLines - 1)))
-				{
-					hitCount = m_view->GetAddressHitCount(memoryOffset);
-				}
-
 				// override the intial style if the first char is special
 				EDrawingStyle style = eDrawingStyle_Normal;
 				if (lineText[0] == ';')
@@ -996,11 +979,31 @@ namespace tools
 					{
 						if (lineMarkers & (1 << i))
 						{
-							const wxRect markerRect(x, lineY, x + m_style.m_markerWidth, m_style.m_lineHeight);
+							const wxRect markerRect(x + m_style.m_markerWidth*i, lineY, m_style.m_markerWidth, m_style.m_lineHeight);
 							dc.SetBrush(m_style.m_markerBrush[i]);
 							dc.SetPen(m_style.m_markerPens[i]);
-							dc.DrawRectangle(markerRect);
-							x += m_style.m_markerWidth;
+
+							if (i == eDrawingMarker_Breakpoint)
+							{
+								auto circleRect = markerRect;
+								circleRect.Deflate(2);
+								dc.DrawEllipse(circleRect.Deflate(2));
+							}
+							else if (i == eDrawingMarker_TraceCurrent)
+							{
+								auto circleRect = markerRect;
+								circleRect.Deflate(3);
+
+								wxPoint points[3];
+								points[0] = wxPoint(circleRect.GetLeft(), circleRect.GetTop());
+								points[1] = wxPoint(circleRect.GetRight(), (circleRect.GetTop() + circleRect.GetBottom()) / 2);
+								points[2] = wxPoint(circleRect.GetLeft(), circleRect.GetBottom());
+								dc.DrawPolygon(3, points);
+							}
+							else
+							{
+								dc.DrawRectangle(markerRect);
+							}
 						}
 					}
 				}
@@ -1071,13 +1074,13 @@ namespace tools
 				}
 
 				// print address text
-				if (m_style.m_drawHitCount)
+				// NOTE: if entry is multi-line the hit count is drawn at the last entry
+				if (m_style.m_drawHitCount && (numLinesDrawn == (numLines - 1)))
 				{
-					if (hitCount)
+					char hitCountText[10];
+					if (m_view->GetAddressHitCount(memoryOffset, hitCountText))
 					{
-						char offsetText[10];
-						sprintf_s(offsetText, 10, "%u", hitCount);
-						dc.DrawText(offsetText, textX, textY);
+						dc.DrawText(hitCountText, textX, textY);
 					}
 				}
 
@@ -1283,14 +1286,11 @@ namespace tools
 	{
 		if (event.GetKeyCode() == WXK_RETURN)
 		{
-			NavigateSelection();
+			m_view->Navigate(this, NavigationType::Follow);
 		}
 		else if (event.GetKeyCode() == WXK_BACK)
 		{
-			if (m_view != nullptr)
-			{
-				m_view->NavigateBack(this);
-			}
+			m_view->Navigate(this, NavigationType::HistoryBack);
 		}
 		else
 		{

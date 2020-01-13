@@ -33,183 +33,110 @@
 					<bitmap>icons/text_align_justify.png</bitmap>
 				</object>
 			</object>
-		</object>
-	</object>
-	<object class="wxPanel" name="TabProject">
-		<style>wxTAB_TRAVERSAL</style>
-		<size>500,300</size>
-		<object class="wxBoxSizer">
-			<orient>wxVERTICAL</orient>
-			<object class="sizeritem">
-				<option>1</option>
-				<flag>wxEXPAND | wxALL</flag>
-				<border>0</border>
-				<object class="wxNotebook" name="m_notebook1">
-					<object class="notebookpage">
-						<label>Module</label>
-						<selected>0</selected>
-						<object class="wxPanel" name="m_panel8">
-							<style>wxTAB_TRAVERSAL</style>
-							<object class="wxBoxSizer">
-								<orient>wxVERTICAL</orient>
-								<object class="sizeritem">
-									<option>1</option>
-									<flag>wxEXPAND</flag>
-									<border>5</border>
-									<object class="wxSplitterWindow" name="MainSplitter">
-										<style>wxSP_NOBORDER</style>
-										<sashpos>0</sashpos>
-										<gravity>0.66</gravity>
-										<minsize>0</minsize>
-										<orientation>horizontal</orientation>
-										<object class="wxPanel" name="m_panel2">
-											<style>wxTAB_TRAVERSAL</style>
-											<object class="wxBoxSizer">
-												<orient>wxVERTICAL</orient>
-												<object class="sizeritem">
-													<option>1</option>
-													<flag>wxEXPAND</flag>
-													<border>5</border>
-													<object class="wxSplitterWindow" name="TopSplitter">
-														<style>wxSP_NOBORDER</style>
-														<sashpos>0</sashpos>
-														<gravity>0.33</gravity>
-														<minsize>0</minsize>
-														<orientation>vertical</orientation>
-														<object class="wxPanel" name="m_panel4">
-															<style>wxTAB_TRAVERSAL</style>
-															<object class="wxBoxSizer">
-																<orient>wxVERTICAL</orient>
-																<object class="sizeritem">
-																	<option>1</option>
-																	<flag>wxEXPAND</flag>
-																	<border>5</border>
-																	<object class="wxTreeCtrl" name="ModulesTree">
-																		<style>wxTR_DEFAULT_STYLE|wxTR_HIDE_ROOT|wxTR_LINES_AT_ROOT|wxSUNKEN_BORDER</style>
-																	</object>
-																</object>
-															</object>
-														</object>
-														<object class="wxPanel" name="m_panel5">
-															<style>wxTAB_TRAVERSAL</style>
-															<object class="wxBoxSizer">
-																<orient>wxVERTICAL</orient>
-																<object class="sizeritem">
-																	<option>1</option>
-																	<flag>wxEXPAND</flag>
-																	<border>5</border>
-																	<object class="wxSplitterWindow" name="m_splitter3">
-																		<style>wxSP_NOBORDER</style>
-																		<sashpos>0</sashpos>
-																		<gravity>0.5</gravity>
-																		<minsize>0</minsize>
-																		<orientation>horizontal</orientation>
-																		<object class="wxPanel" name="m_panel6">
-																			<style>wxTAB_TRAVERSAL</style>
-																			<object class="wxBoxSizer">
-																				<orient>wxVERTICAL</orient>
-																				<object class="sizeritem">
-																					<option>1</option>
-																					<flag>wxEXPAND</flag>
-																					<border>5</border>
-																					<object class="wxListCtrl" name="ImportList">
-																						<style>wxLC_HRULES|wxLC_REPORT|wxLC_VRULES|wxNO_BORDER</style>
-																					</object>
-																				</object>
-																			</object>
-																		</object>
-																		<object class="wxPanel" name="m_panel7">
-																			<style>wxTAB_TRAVERSAL</style>
-																			<object class="wxBoxSizer">
-																				<orient>wxVERTICAL</orient>
-																				<object class="sizeritem">
-																					<option>1</option>
-																					<flag>wxEXPAND</flag>
-																					<border>5</border>
-																					<object class="wxListCtrl" name="ExportList">
-																						<style>wxLC_HRULES|wxLC_REPORT|wxLC_VRULES|wxNO_BORDER</style>
-																					</object>
-																				</object>
-																			</object>
-																		</object>
-																	</object>
-																</object>
-															</object>
-														</object>
-													</object>
-												</object>
-											</object>
-										</object>
-										<object class="wxPanel" name="m_panel3">
-											<style>wxSUNKEN_BORDER|wxTAB_TRAVERSAL</style>
-											<object class="wxBoxSizer">
-												<orient>wxVERTICAL</orient>
-												<object class="sizeritem">
-													<option>1</option>
-													<flag>wxALL|wxEXPAND</flag>
-													<border>0</border>
-													<object class="wxListCtrl" name="ModulesList">
-														<style>wxLC_HRULES|wxLC_REPORT|wxLC_VRULES|wxNO_BORDER</style>
-													</object>
-												</object>
-											</object>
-										</object>
-									</object>
-								</object>
-							</object>
-						</object>
-					</object>
-					<object class="notebookpage">
-						<label>Symbols</label>
-						<selected>0</selected>
-						<object class="wxPanel" name="m_panel9">
-							<style>wxTAB_TRAVERSAL</style>
-						</object>
-					</object>
+			<object class="wxMenu" name="imageMenu">
+				<label>_Image</label>
+				<object class="wxMenuItem" name="imageFindSynbol">
+					<label>Find symbol...\tF3</label>
+					<help></help>
+					<bitmap>icons/find.png</bitmap>
+				</object>
+				<object class="separator" />
+				<object class="wxMenuItem" name="imageGoTo">
+					<label>Go to address...\tCtrl+G</label>
+					<help></help>
+					<bitmap>icons/car.png</bitmap>
+				</object>
+				<object class="separator" />
+				<object class="wxMenuItem" name="imagePrevAddress">
+					<label>Previous address from history</label>
+					<help></help>
+				</object>
+				<object class="wxMenuItem" name="imageNextAddress">
+					<label>Next address from history</label>
+					<help></help>
+				</object>
+				<object class="separator" />
+				<object class="wxMenuItem" name="imageFollowAddress">
+					<label>Follow address\t.</label>
+					<help></help>
+				</object>
+				<object class="wxMenuItem" name="imageReverseFollowAddress">
+					<label>Reverse follow address</label>
+					<help></help>
+				</object>
+				<object class="separator" />
+				<object class="wxMenuItem" name="traceToggleBreakpoint">
+					<label>Toggle breakpoint at address\tF9</label>
+					<help></help>
+					<bitmap>icons/stop.png</bitmap>
 				</object>
 			</object>
-		</object>
-	</object>
-	<object class="wxPanel" name="TabDisassembly">
-		<style>wxTAB_TRAVERSAL</style>
-		<size>500,300</size>
-		<object class="wxBoxSizer">
-			<orient>wxVERTICAL</orient>
-			<object class="sizeritem">
-				<option>0</option>
-				<flag>wxEXPAND</flag>
-				<border>5</border>
-				<object class="wxToolBar" name="InternalToolbar">
-					<style>wxTB_FLAT|wxTB_HORIZONTAL</style>
-					<bitmapsize></bitmapsize>
-					<margins></margins>
-					<packing>1</packing>
-					<separation>5</separation>
-					<object class="tool" name="navigatePrev">
-						<label>Previous</label>
-						<tooltip></tooltip>
-						<longhelp></longhelp>
-						<bitmap>icons\arrow_left.png</bitmap>
-					</object>
-					<object class="tool" name="navigateNext">
-						<label>Next</label>
-						<tooltip></tooltip>
-						<longhelp></longhelp>
-						<bitmap>icons\arrow_right.png</bitmap>
-					</object>
-					<object class="separator" />
-					<object class="wxTextCtrl" name="navigateTo">
-						<size>200,-1</size>
-						<value></value>
-					</object>
+			<object class="wxMenu" name="traceMenu">
+				<label>T_race</label>
+				<object class="wxMenuItem" name="traceRunForward">
+					<label>Run till next breakpoint\tF5</label>
+					<help></help>
+					<bitmap>icons/resultset_next.png</bitmap>
 				</object>
-			</object>
-			<object class="sizeritem">
-				<option>1</option>
-				<flag>wxEXPAND | wxALL</flag>
-				<border>5</border>
-				<object class="wxPanel" name="InnerPanel">
-					<style>wxTAB_TRAVERSAL</style>
+				<object class="wxMenuItem" name="traceRunBackward">
+					<label>Rewind backwards until previous breakpoint\tShift+F5</label>
+					<help></help>
+					<bitmap>icons/resultset_previous.png</bitmap>
+				</object>
+				<object class="separator" />
+				<object class="wxMenuItem" name="traceLocalNext">
+					<label>Step forward in current context\tF11</label>
+					<help></help>
+					<bitmap>icons/stepforward.png</bitmap>
+				</object>
+				<object class="wxMenuItem" name="traceLocalPrev">
+					<label>Step back in current context\tShift+F11</label>
+					<help></help>
+					<bitmap>icons/stepback.png</bitmap>
+				</object>
+				<object class="separator" />
+				<object class="wxMenuItem" name="traceAbsoluteNext">
+					<label>Step forward (all threads)\tF8</label>
+					<help></help>
+					<bitmap>icons/stepforward_world.png</bitmap>
+				</object>
+				<object class="wxMenuItem" name="traceAbsolutePrev">
+					<label>Step back (all theads)\tShift+F8</label>
+					<help></help>
+					<bitmap>icons/stepback_world.png</bitmap>
+				</object>
+				<object class="separator" />
+				<object class="wxMenuItem" name="traceToGlobalStart">
+					<label>Rewind to file start\tCtrl+Shift+Home</label>
+					<help></help>
+					<bitmap>icons/to_global_start.png</bitmap>
+				</object>
+				<object class="wxMenuItem" name="traceToGlobalEnd">
+					<label>Rewind to file end\tCtrl+Shift+End</label>
+					<help></help>
+					<bitmap>icons/to_global_start.png</bitmap>
+				</object>
+				<object class="separator" />
+				<object class="wxMenuItem" name="traceToLocalStart">
+					<label>Rewind to context start\tCtrl+Home</label>
+					<help></help>
+					<bitmap>icons/to_local_start.png</bitmap>
+				</object>
+				<object class="wxMenuItem" name="traceToLocalEnd">
+					<label>Rewind to context end\tCtrl+End</label>
+					<help></help>
+					<bitmap>icons/to_local_end.png</bitmap>
+				</object>
+				<object class="separator" />
+				<object class="wxMenuItem" name="traceHorizontalBack">
+					<label>Rewind to previous iteration\tCtrl+Left</label>
+					<help></help>
+					<bitmap>icons/arrow_left.png</bitmap>
+				</object>
+				<object class="wxMenuItem" name="traceHorizontalNext">
+					<label>Rewind to next iteration\tCtrl+Right</label>
+					<help></help>
+					<bitmap>icons/arrow_right.png</bitmap>
 				</object>
 			</object>
 		</object>
@@ -605,37 +532,41 @@
 		<object class="wxBoxSizer">
 			<orient>wxVERTICAL</orient>
 			<object class="sizeritem">
-				<option>0</option>
-				<flag>wxEXPAND</flag>
+				<option>1</option>
+				<flag>wxEXPAND | wxALL</flag>
 				<border>5</border>
-				<object class="wxToolBar" name="Toolbar">
-					<style>wxTB_FLAT|wxTB_HORIZONTAL</style>
-					<bitmapsize></bitmapsize>
-					<margins></margins>
-					<packing>1</packing>
-					<separation>5</separation>
-					<object class="tool" name="filterRelevantOnly">
-						<label>tool</label>
-						<tooltip></tooltip>
-						<longhelp></longhelp>
-						<bitmap>icons\table.png</bitmap>
-						<toggle>1</toggle>
-					</object>
-					<object class="tool" name="showHex">
-						<label>tool</label>
-						<tooltip>Toggle hexadecimal dispaly of numerical values</tooltip>
-						<longhelp></longhelp>
-						<bitmap>icons\calculator.png</bitmap>
-						<toggle>1</toggle>
-					</object>
+				<object class="wxPanel" name="RegListPanel">
+					<style>wxTAB_TRAVERSAL</style>
 				</object>
 			</object>
+		</object>
+	</object>
+	<object class="wxPanel" name="HorizontalView">
+		<style>wxTAB_TRAVERSAL</style>
+		<size>500,300</size>
+		<object class="wxBoxSizer">
+			<orient>wxVERTICAL</orient>
 			<object class="sizeritem">
 				<option>1</option>
-				<flag>wxBOTTOM|wxEXPAND|wxLEFT|wxRIGHT</flag>
+				<flag>wxEXPAND</flag>
 				<border>5</border>
-				<object class="wxListCtrl" name="RegList">
-					<style>wxLC_HRULES|wxLC_NO_SORT_HEADER|wxLC_REPORT|wxLC_VRULES</style>
+				<object class="wxListCtrl" name="DataList">
+					<style>wxLC_REPORT</style>
+				</object>
+			</object>
+		</object>
+	</object>
+	<object class="wxPanel" name="MemoryHistoryView">
+		<style>wxTAB_TRAVERSAL</style>
+		<size>500,300</size>
+		<object class="wxBoxSizer">
+			<orient>wxVERTICAL</orient>
+			<object class="sizeritem">
+				<option>1</option>
+				<flag>wxEXPAND</flag>
+				<border>5</border>
+				<object class="wxListCtrl" name="DataList">
+					<style>wxLC_REPORT</style>
 				</object>
 			</object>
 		</object>
@@ -1856,12 +1787,6 @@
 						<longhelp></longhelp>
 						<bitmap>icons\play.png</bitmap>
 					</object>
-					<object class="tool" name="codeRunDebug">
-						<label>Debug</label>
-						<tooltip>Run compiled application with debugging</tooltip>
-						<longhelp></longhelp>
-						<bitmap>icons/play_debug.png</bitmap>
-					</object>
 					<object class="tool" name="codeRunTrace">
 						<label>Trace</label>
 						<tooltip>Run compiled application with trace settings saving state of the CPU on each thread after each executed instruction (very slow)</tooltip>
@@ -1882,6 +1807,12 @@
 						<bitmap>icons/text_align_justify.png</bitmap>
 					</object>
 					<object class="separator" />
+					<object class="tool" name="traceImportFile">
+						<label>Import trace</label>
+						<tooltip>Import data from raw trace</tooltip>
+						<longhelp></longhelp>
+						<bitmap>icons/html_go.png</bitmap>
+					</object>
 					<object class="tool" name="traceLoadFile">
 						<label>Load trace</label>
 						<tooltip>Load trace file</tooltip>
@@ -1934,8 +1865,26 @@
 											<option>0</option>
 											<flag>wxALL</flag>
 											<border>5</border>
+											<object class="wxButton" name="ImageAttach">
+												<label>Attach existing image...</label>
+												<default>0</default>
+											</object>
+										</object>
+										<object class="sizeritem">
+											<option>0</option>
+											<flag>wxALL</flag>
+											<border>5</border>
 											<object class="wxButton" name="ImageRemove">
-												<label>Remove image</label>
+												<label>Remove image(s)</label>
+												<default>0</default>
+											</object>
+										</object>
+										<object class="sizeritem">
+											<option>0</option>
+											<flag>wxALL</flag>
+											<border>5</border>
+											<object class="wxButton" name="CopyLaunchCommandLine">
+												<label>Copy start commandline</label>
 												<default>0</default>
 											</object>
 										</object>
@@ -2029,6 +1978,411 @@
 						<object class="wxButton" name="Cancel">
 							<label>_Cancel</label>
 							<default>0</default>
+						</object>
+					</object>
+				</object>
+			</object>
+		</object>
+	</object>
+	<object class="wxPanel" name="TraceTab">
+		<style>wxTAB_TRAVERSAL</style>
+		<size>1207,1020</size>
+		<object class="wxBoxSizer">
+			<orient>wxVERTICAL</orient>
+			<object class="sizeritem">
+				<option>0</option>
+				<flag>wxEXPAND</flag>
+				<border>5</border>
+				<object class="wxToolBar" name="ToolBar">
+					<style>wxTB_DOCKABLE|wxTB_FLAT|wxTB_HORIZONTAL|wxTB_TEXT</style>
+					<bitmapsize></bitmapsize>
+					<margins></margins>
+					<packing>1</packing>
+					<separation>5</separation>
+					<object class="tool" name="navigateGoTo">
+						<label>Goto</label>
+						<tooltip>Go to an address in this image</tooltip>
+						<longhelp></longhelp>
+						<bitmap>icons/table_row_insert.png</bitmap>
+					</object>
+					<object class="separator" />
+					<object class="tool" name="traceToGlobalStart">
+						<label>File start</label>
+						<tooltip>Reset trace to the first frame ever</tooltip>
+						<longhelp></longhelp>
+						<bitmap>icons/to_global_start.png</bitmap>
+					</object>
+					<object class="tool" name="traceToGlobalEnd">
+						<label>File end</label>
+						<tooltip>Reset trace to the last frame in the file</tooltip>
+						<longhelp></longhelp>
+						<bitmap>icons/to_global_end.png</bitmap>
+					</object>
+					<object class="separator" />
+					<object class="tool" name="traceRunBackward">
+						<label>Run back</label>
+						<tooltip>Run back till next breakpoint in the trace</tooltip>
+						<longhelp></longhelp>
+						<bitmap>icons/resultset_previous.png</bitmap>
+					</object>
+					<object class="tool" name="traceRunForward">
+						<label>Run forward</label>
+						<tooltip>Run till next breakpoint in the trace</tooltip>
+						<longhelp></longhelp>
+						<bitmap>icons/resultset_next.png</bitmap>
+					</object>
+					<object class="separator" />
+					<object class="tool" name="traceToLocalStart">
+						<label>Context start</label>
+						<tooltip>Reset trace to the first entry in current context</tooltip>
+						<longhelp></longhelp>
+						<bitmap>icons/to_local_start.png</bitmap>
+					</object>
+					<object class="tool" name="traceToLocalEnd">
+						<label>Context end</label>
+						<tooltip>Reset trace to the first entry</tooltip>
+						<longhelp></longhelp>
+						<bitmap>icons/to_local_end.png</bitmap>
+					</object>
+					<object class="separator" />
+					<object class="tool" name="traceAbsolutePrev">
+						<label>Wide back</label>
+						<tooltip>Go to previously executed instruction (global, all threads and IRQs)</tooltip>
+						<longhelp></longhelp>
+						<bitmap>icons/stepback_world.png</bitmap>
+					</object>
+					<object class="tool" name="traceLocalPrev">
+						<label>Back</label>
+						<tooltip>Go to previously executed instruction in current thread only</tooltip>
+						<longhelp></longhelp>
+						<bitmap>icons/stepback.png</bitmap>
+					</object>
+					<object class="tool" name="traceSyncPos">
+						<label>Sync</label>
+						<tooltip>Sync position in dissassembly to current trace entry</tooltip>
+						<longhelp></longhelp>
+						<bitmap>icons/run.png</bitmap>
+					</object>
+					<object class="tool" name="traceLocalNext">
+						<label>Next</label>
+						<tooltip>Go to previously executed instruction in current thread only</tooltip>
+						<longhelp></longhelp>
+						<bitmap>icons/stepforward.png</bitmap>
+					</object>
+					<object class="tool" name="traceAbsoluteNext">
+						<label>Wide next</label>
+						<tooltip>Go to next executed instruction (global, all threads and IRQs)</tooltip>
+						<longhelp></longhelp>
+						<bitmap>icons/stepforward_world.png</bitmap>
+					</object>
+					<object class="separator" />
+					<object class="tool" name="toggleGlobalStats">
+						<label>Global stats</label>
+						<tooltip>Show global (not function-local) stats for various stuff</tooltip>
+						<longhelp></longhelp>
+						<bitmap>icons/world.png</bitmap>
+						<toggle>1</toggle>
+					</object>
+					<object class="separator" />
+					<object class="tool" name="showValuesAsHex">
+						<label>Hex</label>
+						<tooltip>Show the numbers in hex format</tooltip>
+						<longhelp></longhelp>
+						<bitmap>icons/calculator.png</bitmap>
+						<toggle>1</toggle>
+					</object>
+				</object>
+			</object>
+			<object class="sizeritem">
+				<option>1</option>
+				<flag>wxEXPAND</flag>
+				<border>5</border>
+				<object class="wxSplitterWindow" name="Splitter1">
+					<style>wxSP_3D</style>
+					<sashpos>0</sashpos>
+					<gravity>0.7</gravity>
+					<minsize>0</minsize>
+					<orientation>horizontal</orientation>
+					<object class="wxPanel" name="m_panel31">
+						<style>wxTAB_TRAVERSAL</style>
+						<object class="wxBoxSizer">
+							<orient>wxVERTICAL</orient>
+							<object class="sizeritem">
+								<option>1</option>
+								<flag>wxEXPAND</flag>
+								<border>5</border>
+								<object class="wxSplitterWindow" name="m_splitter7">
+									<style>wxSP_3D</style>
+									<sashpos>0</sashpos>
+									<gravity>0.5</gravity>
+									<minsize>0</minsize>
+									<orientation>vertical</orientation>
+									<object class="wxPanel" name="m_panel33">
+										<style>wxTAB_TRAVERSAL</style>
+										<object class="wxBoxSizer">
+											<orient>wxVERTICAL</orient>
+											<object class="sizeritem">
+												<option>1</option>
+												<flag>wxEXPAND | wxALL</flag>
+												<border>5</border>
+												<object class="wxPanel" name="DisasmPanel">
+													<style>wxTAB_TRAVERSAL</style>
+												</object>
+											</object>
+										</object>
+									</object>
+									<object class="wxPanel" name="m_panel35">
+										<style>wxTAB_TRAVERSAL</style>
+										<object class="wxBoxSizer">
+											<orient>wxVERTICAL</orient>
+											<object class="sizeritem">
+												<option>1</option>
+												<flag>wxEXPAND</flag>
+												<border>5</border>
+												<object class="wxSplitterWindow" name="m_splitter8">
+													<style>wxSP_3D</style>
+													<sashpos>0</sashpos>
+													<gravity>0.5</gravity>
+													<minsize>0</minsize>
+													<orientation>horizontal</orientation>
+													<object class="wxPanel" name="m_panel36">
+														<style>wxTAB_TRAVERSAL</style>
+														<object class="wxBoxSizer">
+															<orient>wxVERTICAL</orient>
+															<object class="sizeritem">
+																<option>1</option>
+																<flag>wxEXPAND | wxALL</flag>
+																<border>5</border>
+																<object class="wxNotebook" name="TraceTabs">
+																	<object class="notebookpage">
+																		<label>Registers</label>
+																		<selected>0</selected>
+																		<object class="wxPanel" name="RegListPanel">
+																			<style>wxTAB_TRAVERSAL</style>
+																			<object class="wxBoxSizer">
+																				<orient>wxVERTICAL</orient>
+																				<object class="sizeritem">
+																					<option>1</option>
+																					<flag>wxEXPAND | wxALL</flag>
+																					<border>5</border>
+																					<object class="wxNotebook" name="RegListTabs" />
+																				</object>
+																			</object>
+																		</object>
+																	</object>
+																	<object class="notebookpage">
+																		<label>Execution info</label>
+																		<selected>0</selected>
+																		<object class="wxPanel" name="TraceDataPanel2">
+																			<style>wxTAB_TRAVERSAL</style>
+																			<object class="wxBoxSizer">
+																				<orient>wxVERTICAL</orient>
+																				<object class="sizeritem">
+																					<option>0</option>
+																					<flag>wxEXPAND</flag>
+																					<border>5</border>
+																					<object class="wxToolBar" name="TimeMachineToolbar">
+																						<style>wxTB_HORIZONTAL|wxTB_TEXT</style>
+																						<bitmapsize></bitmapsize>
+																						<margins></margins>
+																						<packing>1</packing>
+																						<separation>5</separation>
+																						<object class="tool" name="timeMachineCreate">
+																							<label>Time machine</label>
+																							<tooltip>Explore the instruction execution in time machine</tooltip>
+																							<longhelp></longhelp>
+																							<bitmap>icons/clock.png</bitmap>
+																						</object>
+																						<object class="separator" />
+																						<object class="tool" name="horizontalViewFunction">
+																							<label>Function slice</label>
+																							<tooltip>Explore horizontal view of this instruction in current function</tooltip>
+																							<longhelp></longhelp>
+																							<bitmap>icons/table.png</bitmap>
+																						</object>
+																						<object class="tool" name="horizontalViewContext">
+																							<label>Context slice</label>
+																							<tooltip>Explore horizontal view of this instruction in current context</tooltip>
+																							<longhelp></longhelp>
+																							<bitmap>icons/table.png</bitmap>
+																						</object>
+																						<object class="tool" name="horizontalViewGlobal">
+																							<label>Global slice</label>
+																							<tooltip>Explore horizontal view of this instruction in whole trace file</tooltip>
+																							<longhelp></longhelp>
+																							<bitmap>icons/table.png</bitmap>
+																						</object>
+																						<object class="separator" />
+																					</object>
+																				</object>
+																				<object class="sizeritem">
+																					<option>1</option>
+																					<flag>wxEXPAND | wxALL</flag>
+																					<border>5</border>
+																					<object class="wxPanel" name="TraceDataPanel">
+																						<style>wxTAB_TRAVERSAL</style>
+																					</object>
+																				</object>
+																			</object>
+																		</object>
+																	</object>
+																	<object class="notebookpage">
+																		<label>Memory</label>
+																		<selected>1</selected>
+																		<object class="wxPanel" name="MemoryViewPage">
+																			<style>wxTAB_TRAVERSAL</style>
+																			<object class="wxBoxSizer">
+																				<orient>wxVERTICAL</orient>
+																				<object class="sizeritem">
+																					<option>0</option>
+																					<flag>wxEXPAND</flag>
+																					<border>5</border>
+																					<object class="wxToolBar" name="MemoryToolbar">
+																						<style>wxTB_HORIZONTAL</style>
+																						<bitmapsize></bitmapsize>
+																						<margins></margins>
+																						<packing>1</packing>
+																						<separation>5</separation>
+																						<object class="wxTextCtrl" name="MemoryAddress">
+																							<style>wxTE_PROCESS_ENTER</style>
+																							<value></value>
+																						</object>
+																						<object class="wxStaticText" name="m_staticText231">
+																							<label>  Mode: </label>
+																							<wrap>-1</wrap>
+																						</object>
+																						<object class="wxChoice" name="MemoryDisplayMode">
+																							<size>70,-1</size>
+																							<selection>0</selection>
+																							<content />
+																						</object>
+																						<object class="wxStaticText" name="m_staticText2311">
+																							<label>  Row: </label>
+																							<wrap>-1</wrap>
+																						</object>
+																						<object class="wxChoice" name="MemoryRowSize">
+																							<size>50,-1</size>
+																							<selection>0</selection>
+																							<content />
+																						</object>
+																						<object class="wxStaticText" name="m_staticText23111">
+																							<label>  Endianess: </label>
+																							<wrap>-1</wrap>
+																						</object>
+																						<object class="wxChoice" name="MemoryEndianess">
+																							<size>60,-1</size>
+																							<selection>0</selection>
+																							<content />
+																						</object>
+																						<object class="separator" />
+																						<object class="tool" name="traceMemoryWrites">
+																							<label>tool</label>
+																							<tooltip>Generate list of instructions that are writing to given address range</tooltip>
+																							<longhelp></longhelp>
+																							<bitmap>icons/table_go.png</bitmap>
+																						</object>
+																						<object class="separator" />
+																						<object class="tool" name="traceMemoryFull">
+																							<label>tool</label>
+																							<tooltip>Generate list of instructions that are reading and writing to given address range (much slower)</tooltip>
+																							<longhelp></longhelp>
+																							<bitmap>icons/table_refresh.png</bitmap>
+																						</object>
+																					</object>
+																				</object>
+																				<object class="sizeritem">
+																					<option>1</option>
+																					<flag>wxEXPAND | wxALL</flag>
+																					<border>5</border>
+																					<object class="wxPanel" name="MemoryTraceView">
+																						<style>wxTAB_TRAVERSAL</style>
+																					</object>
+																				</object>
+																			</object>
+																		</object>
+																	</object>
+																</object>
+															</object>
+														</object>
+													</object>
+													<object class="wxPanel" name="m_panel39">
+														<style>wxTAB_TRAVERSAL</style>
+														<object class="wxBoxSizer">
+															<orient>wxVERTICAL</orient>
+															<object class="sizeritem">
+																<option>1</option>
+																<flag>wxEXPAND | wxALL</flag>
+																<border>5</border>
+																<object class="wxPanel" name="TimeMachineTabs">
+																	<style>wxTAB_TRAVERSAL</style>
+																</object>
+															</object>
+														</object>
+													</object>
+												</object>
+											</object>
+										</object>
+									</object>
+								</object>
+							</object>
+						</object>
+					</object>
+					<object class="wxPanel" name="m_panel111">
+						<style>wxTAB_TRAVERSAL</style>
+						<object class="wxBoxSizer">
+							<orient>wxVERTICAL</orient>
+							<object class="sizeritem">
+								<option>1</option>
+								<flag>wxEXPAND | wxALL</flag>
+								<border>5</border>
+								<object class="wxNotebook" name="m_notebook11">
+									<object class="notebookpage">
+										<label>Call trace</label>
+										<selected>0</selected>
+										<object class="wxPanel" name="m_panel50">
+											<style>wxTAB_TRAVERSAL</style>
+											<object class="wxBoxSizer">
+												<orient>wxVERTICAL</orient>
+												<object class="sizeritem">
+													<option>1</option>
+													<flag>wxEXPAND</flag>
+													<border>5</border>
+													<object class="wxSplitterWindow" name="m_splitter9">
+														<style>wxSP_3D</style>
+														<sashpos>0</sashpos>
+														<gravity>0.7</gravity>
+														<minsize>0</minsize>
+														<orientation>vertical</orientation>
+														<object class="wxPanel" name="HistoryPanel">
+															<style>wxTAB_TRAVERSAL</style>
+														</object>
+														<object class="wxPanel" name="m_panel51">
+															<style>wxTAB_TRAVERSAL</style>
+															<object class="wxBoxSizer">
+																<orient>wxVERTICAL</orient>
+																<object class="sizeritem">
+																	<option>1</option>
+																	<flag>wxEXPAND | wxALL</flag>
+																	<border>5</border>
+																	<object class="wxNotebook" name="m_notebook13">
+																		<object class="notebookpage">
+																			<label>Call stacks</label>
+																			<selected>0</selected>
+																			<object class="wxPanel" name="HistoryTree">
+																				<style>wxTAB_TRAVERSAL</style>
+																			</object>
+																		</object>
+																	</object>
+																</object>
+															</object>
+														</object>
+													</object>
+												</object>
+											</object>
+										</object>
+									</object>
+								</object>
+							</object>
 						</object>
 					</object>
 				</object>

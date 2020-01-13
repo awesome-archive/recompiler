@@ -4,7 +4,6 @@
 #include "platformDefinition.h"
 #include "platformCPU.h"
 #include "decodingInstructionInfo.h"
-#include "traceData.h"
 #include "traceUtils.h"
 
 namespace decoding
@@ -24,6 +23,7 @@ namespace decoding
 		, m_branchTargetAddress(0)
 		, m_branchTargetReg(NULL)
 		, m_memoryAddressMask(0xFFFFFFFF)
+		, m_memoryWriteMode(eMemoryWriteMode_Normal)
 	{}
 
 	bool InstructionExtendedInfo::AddRegister(const platform::CPURegister* reg, const ERegDependencyMode mode)
@@ -95,6 +95,34 @@ namespace decoding
 
 		// nothing
 		return false;
+	}
+
+	bool InstructionExtendedInfo::ComputeMemoryAddress(const TRegisterDataFetchFunc& regDataFetch, uint64& outAddress) const
+	{
+		if (0 == (m_memoryFlags & (eMemoryFlags_Read | eMemoryFlags_Write | eMemoryFlags_Touch)))
+			return false;
+
+		uint64 addr = m_memoryAddressOffset;
+
+		// base address
+		if (m_memoryAddressBase)
+		{
+			addr += trace::GetRegisterValueInteger(m_memoryAddressBase, regDataFetch, true);
+		}
+
+		// index address
+		if (m_memoryAddressIndex)
+		{
+			const auto indexVal = trace::GetRegisterValueInteger(m_memoryAddressIndex, regDataFetch, true);
+			addr += indexVal * m_memoryAddressScale;
+		}
+
+		// mask address with the bits
+		addr &= m_memoryAddressMask;
+
+		// valid address computed
+		outAddress = (uint32)addr; // TODO: the 32 bit clamp is tempshit
+		return true;
 	}
 
 	bool InstructionExtendedInfo::ComputeMemoryAddress(const trace::DataFrame& data, uint64& outAddress) const

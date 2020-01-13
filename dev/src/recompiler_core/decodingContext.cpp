@@ -100,7 +100,7 @@ namespace decoding
 		return ctx.release();
 	}
 
-	const uint32 Context::ValidateInstruction(ILogOutput& log, const uint32 codeAddress, const bool cached /*= true*/)
+	const uint32 Context::ValidateInstruction(ILogOutput& log, const uint64_t codeAddress, const bool cached /*= true*/)
 	{
 		auto* cache = PrepareInstructionCache(codeAddress);
 		if (cache != nullptr)
@@ -124,7 +124,7 @@ namespace decoding
 		return 0;
 	}
 
-	const uint32 Context::DecodeInstruction(ILogOutput& log, const uint32 codeAddress, Instruction& outInstruction, const bool cached /*= true*/)
+	const uint32 Context::DecodeInstruction(ILogOutput& log, const uint64_t codeAddress, Instruction& outInstruction, const bool cached /*= true*/)
 	{
 		auto* cache = PrepareInstructionCache(codeAddress);
 		if (cache != nullptr)
@@ -148,9 +148,9 @@ namespace decoding
 		return 0;
 	}
 
-	const bool Context::GetFunctionName(const uint32 codeAddress, std::string& outFunctionName, uint32& outFunctionStart) const
+	const bool Context::GetFunctionName(const uint64 codeAddress, std::string& outFunctionName, uint64& outFunctionStart) const
 	{
-		uint32 addr = codeAddress;
+		auto addr = codeAddress;
 		while (m_memoryMap->GetMemoryInfo(addr).IsExecutable())
 		{
 			// function start ?
@@ -169,7 +169,7 @@ namespace decoding
 		return false;
 	}
 
-	InstructionCache* Context::PrepareInstructionCache(const uint32 codeAddress) const
+	InstructionCache* Context::PrepareInstructionCache(const uint64_t codeAddress) const
 	{
 		const auto base = m_image->GetBaseAddress();
 

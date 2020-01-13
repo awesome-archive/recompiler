@@ -5,6 +5,7 @@
 #include "xenonCPU.h"
 #include "xenonCPUDevice.h"
 #include "xenonInplaceExecution.h"
+#include "xenonMemory.h"
 
 #include "../host_core/nativeMemory.h"
 #include "../host_core/nativeKernel.h"
@@ -12,6 +13,7 @@
 #include "../host_core/runtimeCodeExecutor.h"
 #include "../host_core/launcherCommandline.h"
 #include "../host_core/runtimeTraceWriter.h"
+#include "xenonTimeBase.h"
 
 namespace xenon
 {
@@ -21,12 +23,12 @@ namespace xenon
 	{
 		switch (result)
 		{
-			case native::WaitResult::Success: return xnative::X_STATUS_SUCCESS;
-			case native::WaitResult::IOCompletion:return xnative::X_STATUS_USER_APC;
-			case native::WaitResult::Timeout: return xnative::X_STATUS_TIMEOUT;
+			case native::WaitResult::Success: return lib::X_STATUS_SUCCESS;
+			case native::WaitResult::IOCompletion:return lib::X_STATUS_USER_APC;
+			case native::WaitResult::Timeout: return lib::X_STATUS_TIMEOUT;
 		}
 
-		return xnative::X_STATUS_ABANDONED_WAIT_0;
+		return lib::X_STATUS_ABANDONED_WAIT_0;
 	}
 
 	static uint32 TimeoutTicksToMs(int64 timeout_ticks)
@@ -48,7 +50,7 @@ namespace xenon
 
 	IKernelObject::IKernelObject(Kernel* kernel, const KernelObjectType type, const char* name)
 		: m_type(type)
-		, m_name(name)
+		, m_name(name ? name : "")
 		, m_kernel(kernel)
 		, m_index(0)
 	{
@@ -74,24 +76,6 @@ namespace xenon
 		uint32 id = (uint32)m_type << 24;
 		id |= m_index;
 		return id;
-	}
-
-	void IKernelObject::SetNativePointer(void* nativePtr)
-	{
-		xnative::XDISPATCH_HEADER* headerBE = (xnative::XDISPATCH_HEADER*) nativePtr;
-
-		xnative::XDISPATCH_HEADER header;
-		header.TypeFlags = cpu::mem::load<uint32>(&headerBE->TypeFlags);
-		header.SignalState = cpu::mem::load<uint32>(&headerBE->SignalState);
-		header.WaitListFLink = cpu::mem::load<uint32>(&headerBE->WaitListFLink);
-		header.WaitListBLink = cpu::mem::load<uint32>(&headerBE->WaitListBLink);
-		DEBUG_CHECK(!(header.WaitListBLink & 0x1));
-
-		// Stash pointer in struct
-		uint64 objectPtr = reinterpret_cast<uint64>(this);
-		objectPtr |= 0x1;
-		cpu::mem::store<uint32>(&headerBE->WaitListFLink, (uint32)(objectPtr >> 32));
-		cpu::mem::store<uint32>(&headerBE->WaitListBLink, (uint32)(objectPtr >> 0));
 	}
 
 	//-----------------------------------------------------------------------------
@@ -130,65 +114,63 @@ namespace xenon
 	//-----------------------------------------------------------------------------
 
 	KernelList::KernelList()
-		: m_headAddr(0)
+		: m_headAddr()
+	{}
+
+	void KernelList::Insert(Pointer<KernelListEntry> listData)
 	{
-	}
+		listData->m_flink = m_headAddr;
+		listData->m_blink = m_headAddr;
 
-	void KernelList::Insert(const uint32 listEntryPtr)
-	{
-		cpu::mem::storeAddr<uint32>(listEntryPtr + 0, m_headAddr);
-		cpu::mem::storeAddr<uint32>(listEntryPtr + 4, m_headAddr);
-
-		if (m_headAddr != INVALID)
-			cpu::mem::storeAddr<uint32>(m_headAddr + 4, listEntryPtr);
-	}
-
-	bool KernelList::IsQueued(const uint32 listEntryPtr)
-	{
-		const uint32 flink = cpu::mem::loadAddr<uint32>(listEntryPtr + 0);
-		const uint32 blink = cpu::mem::loadAddr<uint32>(listEntryPtr + 4);
-		return (m_headAddr == listEntryPtr) || (flink != 0) || (blink != 0);
-	}
-
-	void KernelList::Remove(const uint32 listEntryPtr)
-	{
-		const uint32 flink = cpu::mem::loadAddr<uint32>(listEntryPtr + 0);
-		const uint32 blink = cpu::mem::loadAddr<uint32>(listEntryPtr + 4);
-
-		if (listEntryPtr == m_headAddr)
+		if (m_headAddr.IsValid())
 		{
-			m_headAddr = flink;
+			Pointer<KernelListEntry> headData(m_headAddr);
+			headData->m_blink = listData;
+		}
+	}
 
-			if (flink != 0)
-				cpu::mem::storeAddr<uint32>(flink + 4, 0);
+	bool KernelList::IsQueued(Pointer<KernelListEntry> listData)
+	{
+		return (m_headAddr == listData) || (listData->m_flink.IsValid()) || (listData->m_blink.IsValid());
+	}
+
+	void KernelList::Remove(Pointer<KernelListEntry> listData)
+	{
+		if (listData == m_headAddr)
+		{
+			m_headAddr = listData->m_flink;
+
+			if (listData->m_flink.IsValid())
+				listData->m_flink = nullptr;
 		}
 		else
 		{
-			if (blink != 0)
-				cpu::mem::storeAddr<uint32>(blink + 0, flink);
+			if (listData->m_blink.IsValid())
+				listData->m_blink->m_flink = nullptr;
 
-			if (flink != 0)
-				cpu::mem::storeAddr<uint32>(flink + 4, blink);
+			if (listData->m_flink.IsValid())
+				listData->m_flink->m_blink = nullptr;
 		}
 
-		cpu::mem::storeAddr<uint32>(listEntryPtr + 0, 0);
-		cpu::mem::storeAddr<uint32>(listEntryPtr + 4, 0);
+		listData->m_blink = nullptr;
+		listData->m_flink = nullptr;
 	}
 
-	const uint32 KernelList::Pop()
+	const Pointer<KernelListEntry> KernelList::Pop()
 	{
-		if (!m_headAddr)
-			return 0;
+		if (!m_headAddr.IsValid())
+			return nullptr;
 
-		uint32 ptr = m_headAddr;
+		auto ptr = m_headAddr;
 		Remove(ptr);
+
 		DEBUG_CHECK(m_headAddr != ptr);
 		return ptr;
 	}
 
 	bool KernelList::HasPending() const
 	{
-		return (m_headAddr != INVALID) && (m_headAddr != NULL);
+		return (m_headAddr.IsValid()) && (m_headAddr.GetAddress().GetAddressValue() != INVALID);
 	}
 
 	//-----------------------------------------------------------------------------
@@ -218,14 +200,13 @@ namespace xenon
 	//-----------------------------------------------------------------------------
 
 	KernelStackMemory::KernelStackMemory(Kernel* kernel, const uint32 size)
-		: IKernelObject(kernel, KernelObjectType::Stack, "Stack")
+		: IKernelObject(kernel, KernelObjectType::Stack, nullptr)
 		, m_base(nullptr)
 		, m_top(nullptr)
-		, m_memory(&kernel->GetNativeMemory())
 		, m_size(size)
 	{
 		// alloc stack
-		m_base = m_memory->VirtualAlloc(NULL, m_size, native::IMemory::eAlloc_Top | native::IMemory::eAlloc_Reserve | native::IMemory::eAlloc_Commit, native::IMemory::eFlags_ReadWrite);
+		m_base = GPlatform.GetMemory().VirtualAlloc(NULL, m_size, /*lib::XMEM_TOP_DOWN | */lib::XMEM_RESERVE | lib::XMEM_COMMIT, lib::XPAGE_READWRITE);
 		DEBUG_CHECK(m_base != nullptr);
 
 		// setup
@@ -239,10 +220,9 @@ namespace xenon
 	KernelStackMemory::~KernelStackMemory()
 	{
 		uint32 freedSize = 0;
-		m_memory->VirtualFree(m_base, m_size, native::IMemory::eAlloc_Decomit | native::IMemory::eAlloc_Release, freedSize);
+		GPlatform.GetMemory().VirtualFree(m_base, m_size, lib::XMEM_DECOMMIT | lib::XMEM_RELEASE, freedSize);
 
 		m_base = nullptr;
-		m_memory = nullptr;
 		m_top = nullptr;
 		m_size = 0;
 	}
@@ -250,14 +230,14 @@ namespace xenon
 	//-----------------------------------------------------------------------------
 
 	KernelThreadMemory::KernelThreadMemory(Kernel* kernel, const uint32 stackSize, const uint32 threadId, const uint64 entryPoint, const uint32 cpuIndex)
-		: IKernelObject(kernel, KernelObjectType::ThreadBlock, "ThreadBlock")
+		: IKernelObject(kernel, KernelObjectType::ThreadBlock, nullptr)
 		, m_stack(kernel, stackSize)
 	{
 		// total size to allocate
 		const uint32 totalThreaDataSize = (THREAD_DATA_SIZE + PRC_DATA_SIZE + TLS_COUNT + SCRATCH_SIZE) * sizeof(uint32);
 
 		// alloc stack
-		m_block = kernel->GetNativeMemory().VirtualAlloc(NULL, totalThreaDataSize, native::IMemory::eAlloc_Top | native::IMemory::eAlloc_Reserve | native::IMemory::eAlloc_Commit, native::IMemory::eFlags_ReadWrite);
+		m_block = GPlatform.GetMemory().VirtualAlloc(NULL, totalThreaDataSize, lib::XMEM_TOP_DOWN | lib::XMEM_RESERVE | lib::XMEM_COMMIT, lib::XPAGE_READWRITE);
 		memset(m_block, 0, totalThreaDataSize);
 		DEBUG_CHECK(m_block != nullptr);
 
@@ -267,7 +247,8 @@ namespace xenon
 		m_prcAddr = (uint32)&base[TLS_COUNT];
 		m_threadDataAddr = (uint32)&base[TLS_COUNT + PRC_DATA_SIZE];
 		m_scratchAddr = (uint32)&base[TLS_COUNT + PRC_DATA_SIZE + THREAD_DATA_SIZE];
-
+		m_blockSize = totalThreaDataSize;
+		
 		// setup prc data block
 		cpu::mem::storeAddr<uint32>(m_prcAddr + 0x000, m_tlsDataAddr); // tls address
 		cpu::mem::storeAddr<uint32>(m_prcAddr + 0x030, m_prcAddr); // prc address
@@ -278,7 +259,7 @@ namespace xenon
 		cpu::mem::storeAddr<uint32>(m_prcAddr + 0x150, 1); // dpc flag (guess)
 
 													  // setup internal descriptor layout
-													  // xnative::XDISPATCH_HEADER
+													  // lib::XDISPATCH_HEADER
 		cpu::mem::storeAddr<uint32>(m_threadDataAddr + 0x000, 6); // ThreadObject
 		cpu::mem::storeAddr<uint32>(m_threadDataAddr + 0x008, m_threadDataAddr + 0x008); // list pointer
 		cpu::mem::storeAddr<uint32>(m_threadDataAddr + 0x00C, m_threadDataAddr + 0x008);
@@ -320,7 +301,7 @@ namespace xenon
 	KernelThreadMemory::~KernelThreadMemory()
 	{
 		uint32 freedSize = 0;
-		GetOwner()->GetNativeMemory().VirtualFree(m_block, 0, native::IMemory::eAlloc_Decomit | native::IMemory::eAlloc_Release, freedSize);
+		GPlatform.GetMemory().VirtualFree(m_block, 0, lib::XMEM_DECOMMIT | lib::XMEM_RELEASE, freedSize);
 
 		m_block = nullptr;
 		m_prcAddr = 0;
@@ -332,7 +313,7 @@ namespace xenon
 	//-----------------------------------------------------------------------------
 
 	KernelTLS::KernelTLS(Kernel* kernel)
-		: IKernelObject(kernel, KernelObjectType::TLS, "TLS")
+		: IKernelObject(kernel, KernelObjectType::TLS, nullptr)
 	{
 		memset(&m_entries, 0, sizeof(m_entries));
 	}
@@ -358,7 +339,7 @@ namespace xenon
 	//-----------------------------------------------------------------------------
 
 	KernelCriticalSection::KernelCriticalSection(Kernel* kernel, native::ICriticalSection* nativeObject)
-		: IKernelObject(kernel, KernelObjectType::CriticalSection, "CriticalSection")
+		: IKernelObject(kernel, KernelObjectType::CriticalSection, nullptr)
 		, m_lock(nativeObject)
 		, m_isLocked(false)
 		, m_spinCount(0)
@@ -388,9 +369,7 @@ namespace xenon
 	KernelEvent::KernelEvent(Kernel* kernel, native::IEvent* nativeEvent, const char* name)
 		: IKernelWaitObject(kernel, KernelObjectType::Event, name)
 		, m_event(nativeEvent)
-	{
-		//GLog.Log("****CREATE: %d", GetIndex());
-	}
+	{}
 
 	KernelEvent::~KernelEvent()
 	{
@@ -400,7 +379,6 @@ namespace xenon
 
 	uint32 KernelEvent::Set(uint32 priority_increment, bool wait)
 	{
-		//GLog.Log("****SET: %d", GetIndex());
 		return m_event->Set();
 	}
 
@@ -411,7 +389,6 @@ namespace xenon
 
 	uint32 KernelEvent::Reset()
 	{
-		//GLog.Log("****RESET: %d", GetIndex());
 		return m_event->Reset();
 	}
 
@@ -419,42 +396,220 @@ namespace xenon
 	{
 		const auto timeoutValue = optTimeout ? TimeoutTicksToMs(*optTimeout) : native::TimeoutInfinite;
 		const auto result = m_event->Wait(timeoutValue, alertable);
-		//GLog.Log("****WAIT: %d, %d", GetIndex(), result);
 		return ConvWaitResult(result);
+	}
+
+	native::IKernelObject* KernelEvent::GetNativeObject() const
+	{
+		return m_event;
+	}
+
+	//-----------------------------------------------------------------------------
+
+	KernelSemaphore::KernelSemaphore(Kernel* kernel, native::ISemaphore* nativeSemaphore, const char* name /*= "Semaphore"*/)
+		: IKernelWaitObject(kernel, KernelObjectType::Semaphore, name)
+		, m_semaphore(nativeSemaphore)
+	{}
+
+	KernelSemaphore::~KernelSemaphore()
+	{
+		delete m_semaphore;
+		m_semaphore = nullptr;
+	}
+
+	uint32 KernelSemaphore::Release(uint32 count)
+	{
+		return m_semaphore->Release(count);
+	}
+
+	uint32 KernelSemaphore::Wait(const uint32 waitReason, const uint32 processorMode, const bool alertable, const int64* optTimeout)
+	{
+		const auto timeoutValue = optTimeout ? TimeoutTicksToMs(*optTimeout) : native::TimeoutInfinite;
+		const auto result = m_semaphore->Wait(timeoutValue, alertable);
+		return ConvWaitResult(result);
+	}
+
+	native::IKernelObject* KernelSemaphore::GetNativeObject() const
+	{
+		return m_semaphore;
+	}
+
+	//-----------------------------------------------------------------------------
+
+	KernelTimer::KernelTimer(Kernel* kernel, native::ITimer* nativeTimer, const char* name/* = nullptr*/)
+		: IKernelWaitObject(kernel, KernelObjectType::Timer, name)
+		, m_timer(nativeTimer)
+	{}
+
+	KernelTimer::~KernelTimer()
+	{
+		delete m_timer;
+		m_timer = nullptr;
+	}
+
+	bool KernelTimer::Setup(int64_t waitTime, int64_t periodMs, MemoryAddress callbackFuncAddress, uint32 callbackArg)
+	{
+		// the callback runs in context of the calling thread
+		auto currentThead = KernelThread::GetCurrentThread();
+		DEBUG_CHECK(currentThead != nullptr);
+
+		// setup callback, we will use the system's timer callback to push APC to our thread
+		std::function<void()> callback = nullptr;
+		if (callbackFuncAddress.IsValid())
+		{
+			callback = [currentThead, callbackFuncAddress, callbackArg]()
+			{				
+				// https://github.com/benvanik/xenia/blob/bc0ddbb05a9872a72d6af0afc5caa464ddb1a417/src/xenia/kernel/xtimer.cc
+				auto currentTime = GPlatform.GetTimeBase().GetSystemTime();
+				auto currentTimeLow = (uint32_t)(currentTime);
+				auto currentTimeHigh = (uint32_t)(currentTime >> 32);
+				currentThead->EnqueueAPC(callbackFuncAddress, callbackArg, currentTimeLow, currentTimeHigh);
+			};
+		}
+
+		if (!periodMs)
+			return m_timer->SetOnce(100 * waitTime, callback);
+		else
+			return m_timer->SetRepeating(100 * waitTime, periodMs, callback);
+	}
+
+	bool KernelTimer::Cancel()
+	{
+		return m_timer->Cancel();
+	}
+
+	uint32 KernelTimer::Wait(const uint32 waitReason, const uint32 processorMode, const bool alertable, const int64* optTimeout)
+	{
+		const auto timeoutValue = optTimeout ? TimeoutTicksToMs(*optTimeout) : native::TimeoutInfinite;
+		const auto result = m_timer->Wait(timeoutValue, alertable);
+		return ConvWaitResult(result);
+	}
+
+	native::IKernelObject* KernelTimer::GetNativeObject() const
+	{
+		return m_timer;
+	}
+
+	//-----------------------------------------------------------------------------
+
+	KernelMutant::KernelMutant(Kernel* kernel, native::IMutant* nativeMutant, const char* name /*= nullptr*/)
+		: IKernelWaitObject(kernel, KernelObjectType::Mutant, name)
+		, m_mutant(nativeMutant)
+	{}
+
+	KernelMutant::~KernelMutant()
+	{
+		delete m_mutant;
+		m_mutant = nullptr;
+	}
+
+	bool KernelMutant::Release()
+	{
+		return m_mutant->Release();
+	}
+
+	uint32 KernelMutant::Wait(const uint32 waitReason, const uint32 processorMode, const bool alertable, const int64* optTimeout)
+	{
+		const auto timeoutValue = optTimeout ? TimeoutTicksToMs(*optTimeout) : native::TimeoutInfinite;
+		const auto result = m_mutant->Wait(timeoutValue, alertable);
+		return ConvWaitResult(result);
+	}
+
+	native::IKernelObject* KernelMutant::GetNativeObject() const
+	{
+		return m_mutant;
+	}
+
+	//-----------------------------------------------------------------------------
+
+	KernelEventNotifier::KernelEventNotifier(Kernel* kernel)
+		: IKernelObject(kernel, KernelObjectType::EventNotifier, nullptr)
+	{}
+
+	KernelEventNotifier::~KernelEventNotifier()
+	{}
+
+	const bool KernelEventNotifier::Empty() const
+	{
+		std::lock_guard<std::mutex> lock(m_notificationLock);
+		return m_notifications.empty();
+	}
+
+	void KernelEventNotifier::PushNotification(const uint32 id, const uint32 data)
+	{
+		std::lock_guard<std::mutex> lock(m_notificationLock);
+		m_notifications.push_back({ id, data });
+	}
+
+	const bool KernelEventNotifier::PopNotification(uint32& outId, uint32& outData)
+	{
+		std::lock_guard<std::mutex> lock(m_notificationLock);
+		if (m_notifications.empty())
+			return false;
+
+		const auto data = m_notifications[0];
+		m_notifications.erase(m_notifications.begin());
+
+		outId = data.m_id;
+		outData = data.m_data;
+		return true;
+	}
+
+	const bool KernelEventNotifier::PopSpecificNotification(const uint32 id, uint32& outData)
+	{
+		std::lock_guard<std::mutex> lock(m_notificationLock);
+		if (m_notifications.empty())
+			return false;
+
+		for (auto it = m_notifications.begin(); it != m_notifications.end(); ++it)
+		{
+			if ((*it).m_id == id)
+			{
+				outData = (*it).m_data;
+				return true;
+			}
+		}
+
+		return false;
 	}
 
 	//-----------------------------------------------------------------------------
 
 	Kernel::Kernel(const native::Systems& system, const launcher::Commandline& cmdline)
 		: m_nativeKernel(system.m_kernel)
-		, m_nativeMemory(system.m_memory)
 		, m_maxObjectIndex(1)
 		, m_numFreeIndices(0)
 		, m_exitRequested(false)
+		, m_irqLevel(IRQL_Normal)
 	{
-		m_lock = m_nativeKernel->CreateCriticalSection();
-		m_interruptLock = m_nativeKernel->CreateCriticalSection();
-		m_tlsLock = m_nativeKernel->CreateCriticalSection();
-		m_threadLock = m_nativeKernel->CreateCriticalSection();
-
 		memset(&m_objects, 0, sizeof(m_objects));
 		memset(&m_freeIndices, 0, sizeof(m_freeIndices));
 
 		for (uint32 i = 0; i < MAX_TLS; ++i)
 			m_tlsFreeEntries[i] = true;
-
-		// tracing enabled ?
-		if (cmdline.HasOption("tracefile"))
-		{
-			m_traceFileRootName = cmdline.GetOptionValueW("tracefile");
-			if (!m_traceFileRootName.empty())
-			{
-				GLog.Warn("Kernel: Trace file enable, all traces will be outputed as '%ls'", m_traceFileRootName.c_str());
-			}
-		}
 	}
 
 	Kernel::~Kernel()
+	{
+		DEBUG_CHECK(m_threads.empty());
+	}
+
+	KernelIrql Kernel::RaiseIRQL(const KernelIrql level)
+	{
+		const auto oldLevel = m_irqLevel.exchange(level);
+		DEBUG_CHECK(oldLevel < level);
+		return oldLevel;
+	}
+
+	KernelIrql Kernel::LowerIRQL(const KernelIrql level)
+	{
+		const auto oldLevel = m_irqLevel.exchange(level);
+		DEBUG_CHECK(oldLevel > level);
+		KernelThread::GetCurrentThread()->ProcessAPC();
+		return oldLevel;
+	}
+
+	void Kernel::StopAllThreads()
 	{
 		if (!m_threads.empty())
 		{
@@ -462,12 +617,8 @@ namespace xenon
 
 			for (auto* ptr : m_threads)
 				delete ptr;
+			m_threads.clear();
 		}
-
-		delete m_lock;
-		delete m_interruptLock;
-		delete m_threadLock;
-		delete m_tlsLock;
 	}
 
 	void Kernel::AllocIndex(IKernelObject* object, uint32& outIndex)
@@ -475,7 +626,7 @@ namespace xenon
 		DEBUG_CHECK(object != nullptr);
 		DEBUG_CHECK(outIndex == 0);
 
-		m_lock->Acquire();
+		std::lock_guard<std::mutex> lock(m_lock);
 
 		// get from list
 		if (m_maxObjectIndex < MAX_OBJECT)
@@ -488,10 +639,19 @@ namespace xenon
 			m_numFreeIndices -= 1;
 		}
 
+		// add to list
 		DEBUG_CHECK(m_objects[outIndex] == NULL);
 		m_objects[outIndex] = object;
 
-		m_lock->Release();
+		// in case of named objects, add it to the named list
+		if (object->GetName() != nullptr)
+		{
+			auto it = m_namedObjets.find(object->GetName());
+			DEBUG_CHECK(it == m_namedObjets.end());
+			m_namedObjets[object->GetName()] = object;
+
+			GLog.Log("Kernel: Registered name object '%hs', type %u, handle 0x%08X", object->GetName(), object->GetType(), object->GetHandle());
+		}
 	}
 
 	void Kernel::ReleaseIndex(IKernelObject* object, uint32& outIndex)
@@ -499,21 +659,84 @@ namespace xenon
 		DEBUG_CHECK(object != nullptr);
 		DEBUG_CHECK(outIndex != 0);
 
-		m_lock->Acquire();
+		// HACK: keep track of the event notifier table
+		if (object->GetType() == KernelObjectType::EventNotifier)
+		{
+			std::lock_guard<std::mutex> lock(m_eventNotifiersLock);
+			utils::RemoveFromVector(m_eventNotifiers, (KernelEventNotifier*)object);
+		}
 
+		std::lock_guard<std::mutex> lock(m_lock);
+
+		// if the object was named remove it from the list of named objects
+		if (object->GetName() != nullptr)
+		{
+			auto it = m_namedObjets.find(object->GetName());
+			DEBUG_CHECK(it != m_namedObjets.end());
+			m_namedObjets.erase(it);
+
+			GLog.Log("Kernel: Unregistered name object '%hs', type %u, handle 0x%08X", object->GetName(), object->GetType(), object->GetHandle());
+		}
+
+		// unregister from the dispatch map
+		{
+			auto it = m_objectToDispatchHeader.find(object);
+			if (it != m_objectToDispatchHeader.end())
+			{
+				m_dispatchHeaderToObject.erase(it->second);
+				m_objectToDispatchHeader.erase(it);
+			}
+		}
+
+		// remove from object list
 		DEBUG_CHECK(m_objects[outIndex] == object);
 		m_objects[outIndex] = nullptr;
 
+		// read the object's index to the list so it can be reused
 		m_freeIndices[m_numFreeIndices] = outIndex;
 		outIndex = 0;
-
 		m_numFreeIndices += 1;
+	}
 
-		m_lock->Release();
+	bool Kernel::DuplicateHandle(const uint32 handle, uint32& newHandle)
+	{
+		auto* obj = ResolveHandle(handle, KernelObjectType::Unknown);
+		if (!obj)
+			return false;
+
+		if (obj->IsRefCounted())
+		{
+			auto* refCounted = (IKernelWaitObject*)obj;
+			refCounted->AddRef();
+		}
+
+		// TODO!
+		newHandle = handle;
+		return true;
+	}
+
+	bool Kernel::CloseHandle(const uint32 handle)
+	{
+		// TODO!
+
+		auto* obj = ResolveHandle(handle, KernelObjectType::Unknown);
+		if (!obj)
+			return nullptr;
+
+		// remove object from mapping
+		if (obj->IsRefCounted())
+		{
+			auto* refCounted = (IKernelWaitObject*)obj;
+			refCounted->Release();
+		}
+
+		return true;
 	}
 
 	IKernelObject* Kernel::ResolveAny(const uint32 handle)
 	{
+		std::lock_guard<std::mutex> lock(m_lock);
+
 		// no object
 		if (!handle)
 			return nullptr;
@@ -542,6 +765,8 @@ namespace xenon
 
 	IKernelObject* Kernel::ResolveHandle(const uint32 handle, KernelObjectType requestedType)
 	{
+		std::lock_guard<std::mutex> lock(m_lock);
+
 		// no object
 		if (!handle)
 			return nullptr;
@@ -554,10 +779,10 @@ namespace xenon
 		}
 		else if (handle == 0xFFFFFFFE)
 		{
-			if (requestedType != KernelObjectType::Thread)
-				return nullptr;
+			if (requestedType == KernelObjectType::Thread || requestedType == KernelObjectType::Unknown)
+				return KernelThread::GetCurrentThread();
 
-			return KernelThread::GetCurrentThread();
+			return nullptr;
 		}
 
 		// generic case - get the id
@@ -591,67 +816,47 @@ namespace xenon
 		return object;
 	}
 
-	IKernelObject* Kernel::ResolveObject(void* nativePtr, NativeKernelObjectType requestedType, const bool allowCreate)
+	IKernelObject* Kernel::ResolveNamedObject(const char* name, KernelObjectType requestedType)
 	{
-		// Unfortunately the XDK seems to inline some KeInitialize calls, meaning
-		// we never see it and just randomly start getting passed events/timers/etc.
-		// Luckily it seems like all other calls (Set/Reset/Wait/etc) are used and
-		// we don't have to worry about PPC code poking the struct. Because of that,
-		// we init on first use, store our pointer in the struct, and dereference it
-		// each time.
-		// We identify this by checking the low bit of wait_list_blink - if it's 1,
-		// we have already put our pointer in there.
-		xnative::XDISPATCH_HEADER* headerBE = (xnative::XDISPATCH_HEADER*) nativePtr;
+		std::lock_guard<std::mutex> lock(m_lock);
 
-		// get true header
-		xnative::XDISPATCH_HEADER header;
-		header.TypeFlags = cpu::mem::load<uint32>(&headerBE->TypeFlags);
-		header.SignalState = cpu::mem::load<uint32>(&headerBE->SignalState);
-		header.WaitListFLink = cpu::mem::load<uint32>(&headerBE->WaitListFLink);
-		header.WaitListBLink = cpu::mem::load<uint32>(&headerBE->WaitListBLink);
-
-		// use the existing type
-		if (requestedType == NativeKernelObjectType::Unknown)
-		{
-			requestedType = (NativeKernelObjectType)(header.TypeFlags & 0xFF);
-		}
-		else
-		{
-			const auto actualType = (NativeKernelObjectType)(header.TypeFlags & 0xFF);
-			if (actualType != requestedType)
-			{
-				GLog.Err("Kernel: object type mismatch, ptr=%08X, actual type=%d, requested type=%d", (uint32)nativePtr, actualType, requestedType);
-				return nullptr;
-			}
-		}
-
-		// extract existing pointer
-		if (header.WaitListBLink & 0x1)
-		{
-			// already initialized
-			uint64 objectPtr = ((uint64)header.WaitListFLink) << 32;
-			objectPtr |= header.WaitListBLink & ~1;
-
-			return (IKernelObject*)objectPtr;
-		}
-
-		// create object
-		if (!allowCreate)
+		// invalid name
+		if (!name || !*name)
 			return nullptr;
 
-		// First use from native struct, create new.
+		// find in the named map
+		auto it = m_namedObjets.find(name);
+		if (it == m_namedObjets.end())
+			return nullptr;
+
+		// check type
+		auto* object = it->second;
+		if (requestedType != KernelObjectType::Unknown && object->GetType() != requestedType)
+			return nullptr;
+
+		// we've found the object
+		return object;
+	}
+
+	IKernelObject* Kernel::CreateInlinedObject(Pointer<KernelDispatchHeader> dispatchHeader, NativeKernelObjectType requestedType)
+	{
+		// due to the kernel function in-lining (how brilliant...) sometimes we don't have the proper initialization call for the object
+		// this function attempts to create our wrapper in case we see an object for the first time
+
 		// http://www.nirsoft.net/kernel_struct/vista/KOBJECTS.html
+		// https://github.com/benvanik/xenia/blob/bc0ddbb05a9872a72d6af0afc5caa464ddb1a417/src/xenia/kernel/xobject.cc
 		IKernelObject* object = NULL;
 		switch (requestedType)
 		{
 			case NativeKernelObjectType::EventNotificationObject:
 			case NativeKernelObjectType::EventSynchronizationObject:
 			{
-				const bool manualReset = (header.TypeFlags >> 24) == 0;
-				const bool initialState = header.SignalState ? true : false;
+				const bool manualReset = (dispatchHeader->m_typeAndFlags >> 24) == 0;
+				const bool initialState = dispatchHeader->m_signalState ? true : false;
 				auto* nativeEvent = m_nativeKernel->CreateEvent(manualReset, initialState);
-				object = new KernelEvent(this, nativeEvent, "NativeEvent");
-				break;
+				auto* object = new KernelEvent(this, nativeEvent, nullptr);
+				BindDispatchObjectToKernelObject(object, dispatchHeader);
+				return object;
 			}
 
 			case NativeKernelObjectType::MutantObject:
@@ -663,45 +868,112 @@ namespace xenon
 
 			case NativeKernelObjectType::SemaphoreObject:
 			{
-				GLog.Err("Kernel: GetObject - trying to initialize semaphore");
-				//object = new CSemaphore(nativePtr, header);
-				break;
-			}
+				const auto semaphoreHeader = Pointer<KernelSemaphoreHeader>(dispatchHeader.GetNativePointer());
+				const auto maxCount = semaphoreHeader->m_maxCount;
+				const auto currentCount = semaphoreHeader->m_dispatchHeader.m_signalState;
 
-			case NativeKernelObjectType::ProcessObject:
-			case NativeKernelObjectType::QueueObject:
-			case NativeKernelObjectType::ThreadObject:
-			case NativeKernelObjectType::GateObject:
-			case NativeKernelObjectType::TimerNotificationObject:
-			case NativeKernelObjectType::TimerSynchronizationObject:
-			case NativeKernelObjectType::ApcObject:
-			case NativeKernelObjectType::DpcObject:
-			case NativeKernelObjectType::DeviceQueueObject:
-			case NativeKernelObjectType::EventPairObject:
-			case NativeKernelObjectType::InterruptObject:
-			case NativeKernelObjectType::ProfileObject:
-			case NativeKernelObjectType::ThreadedDpcObject:
-			default:
-			{
-				GLog.Err("Kernel: Unknown/uninitialized object type: %d", requestedType);
-				DebugBreak();
-				return NULL;
+				auto* nativeSemaphore = m_nativeKernel->CreateSemaphore(currentCount, maxCount);
+				auto* object = new KernelSemaphore(this, nativeSemaphore, nullptr);
+				BindDispatchObjectToKernelObject(object, dispatchHeader);
+				return object;
 			}
 		}
 
-		// Stash pointer in struct
-		uint64 objectPtr = reinterpret_cast<uint64>(object);
-		objectPtr |= 0x1;
-		cpu::mem::store<uint32>(&headerBE->WaitListFLink, (uint32)(objectPtr >> 32));
-		cpu::mem::store<uint32>(&headerBE->WaitListBLink, (uint32)(objectPtr >> 0));
-
-		// return mapped object
-		return object;
+		// unable to initialize ad-hock object
+		GLog.Err("Kernel: Unable to initialize ad-hoc object from the DispatchHeader only: %d", requestedType);
+		DebugBreak();
+		return nullptr;
 	}
 
-	void Kernel::ExecuteInterrupt(const uint32 cpuIndex, const uint32 callback, const uint64* args, const uint32 numArgs, const bool trace)
+	void Kernel::BindDispatchObjectToKernelObject(IKernelObject* object, Pointer<KernelDispatchHeader> dispatchHeader)
 	{
-		m_interruptLock->Acquire();
+		const auto dispatchHeaderAddress = dispatchHeader.GetAddress().GetAddressValue();
+
+		std::lock_guard<std::mutex> lock(m_lock);
+
+		const auto it = m_dispatchHeaderToObject.find(dispatchHeaderAddress);
+		DEBUG_CHECK(it == m_dispatchHeaderToObject.end());
+		m_dispatchHeaderToObject[dispatchHeaderAddress] = object;
+		m_objectToDispatchHeader[object] = dispatchHeaderAddress;
+	}
+
+	IKernelObject* Kernel::ResolveObject(Pointer<KernelDispatchHeader> dispatchHeader, NativeKernelObjectType requestedType, const bool allowCreate)
+	{
+		DEBUG_CHECK(dispatchHeader.IsValid());
+
+		// use the existing type
+		if (requestedType == NativeKernelObjectType::Unknown)
+		{
+			requestedType = (NativeKernelObjectType)(dispatchHeader->m_typeAndFlags & 0xFF);
+		}
+		else
+		{
+			const auto actualType = (NativeKernelObjectType)(dispatchHeader->m_typeAndFlags & 0xFF);
+			if (actualType != requestedType)
+			{
+				GLog.Err("Kernel: object type mismatch, ptr=%08X, actual type=%d, requested type=%d", dispatchHeader.GetAddress().GetAddressValue(), actualType, requestedType);
+				return nullptr;
+			}
+		}
+
+		// translate into the actual object pointer, this is hacked - instead of placing objects in a list we use 
+		{
+			std::lock_guard<std::mutex> lock(m_lock);
+
+			const auto dispatchHeaderAddress = dispatchHeader.GetAddress().GetAddressValue();
+			const auto it = m_dispatchHeaderToObject.find(dispatchHeaderAddress);
+			if (it != m_dispatchHeaderToObject.end())
+				return it->second;
+		}
+
+		// we haven't found the object, if it's allowed to create it do it now
+		if (allowCreate)
+			return CreateInlinedObject(dispatchHeader, requestedType);
+
+		// no object create
+		return nullptr;
+	}
+
+	void Kernel::PostEventNotification(const uint32 eventId, const uint32 eventData)
+	{
+		GLog.Log("Kernel: Posting global event 0x%08X, data 0x%08X", eventId, eventData);
+
+		std::lock_guard<std::mutex> lock(m_eventNotifiersLock);
+
+		for (auto* notifier : m_eventNotifiers)
+			notifier->PushNotification(eventId, eventData);
+	}
+
+	uint32 Kernel::WaitMultiple(const std::vector<IKernelWaitObject*>& waitObjects, const bool waitAll, const uint64* timeout, const bool alertable)
+	{
+		// collect native kernel object
+		std::vector<native::IKernelObject*> nativeKernelObjects;
+		for (const auto* waitObject : waitObjects)
+		{
+			auto* nativeObject = waitObject->GetNativeObject();
+			DEBUG_CHECK(nativeObject != nullptr);
+			nativeKernelObjects.push_back(nativeObject);
+		}
+
+		// wait
+		const auto timeoutValue = timeout ? TimeoutTicksToMs(*timeout) : native::TimeoutInfinite;
+		const auto ret = m_nativeKernel->WaitMultiple(nativeKernelObjects, waitAll, timeoutValue, alertable);
+		return ConvWaitResult(ret);
+	}
+
+	uint32 Kernel::SignalAndWait(IKernelWaitObject* signalObject, IKernelWaitObject* waitObject, const bool alertable, const uint64_t* timeout)
+	{
+		auto* nativeSignalObject = signalObject->GetNativeObject();
+		auto* nativeWaitObject = waitObject->GetNativeObject();
+
+		const auto timeoutValue = timeout ? TimeoutTicksToMs(*timeout) : native::TimeoutInfinite;
+		const auto ret = m_nativeKernel->SignalAndWait(nativeSignalObject, nativeWaitObject, timeoutValue, alertable);
+		return ConvWaitResult(ret);
+	}
+
+	void Kernel::ExecuteInterrupt(const uint32 cpuIndex, const uint32 callback, const uint64* args, const uint32 numArgs, const char* name /*= "IRQ"*/)
+	{
+		std::lock_guard<std::mutex> lock(m_interruptLock);
 
 		static uint32 s_nextThreadID = 10000;
 
@@ -715,15 +987,13 @@ namespace xenon
 		cpuExecutionParams.m_args[1] = numArgs >= 2 ? args[1] : 0;
 
 		// execute code
-		InplaceExecution cpuExecution(this, cpuExecutionParams);
-		cpuExecution.Execute(trace);
-
-		m_interruptLock->Release();
+		InplaceExecution cpuExecution(this, cpuExecutionParams, name);
+		cpuExecution.Execute();
 	}
 
 	uint32 Kernel::AllocTLSIndex()
 	{
-		m_tlsLock->Acquire();
+		std::lock_guard<std::mutex> lock(m_tlsLock);
 
 		int32 freeIndex = -1;
 		for (uint32 i = 0; i < MAX_TLS; ++i)
@@ -739,19 +1009,15 @@ namespace xenon
 
 		m_tlsFreeEntries[freeIndex] = false;
 
-		m_tlsLock->Release();
-
 		return freeIndex;
 	}
 
 	void Kernel::FreeTLSIndex(const uint32 index)
 	{
-		m_tlsLock->Acquire();
+		std::lock_guard<std::mutex> lock(m_interruptLock);
 
 		DEBUG_CHECK(m_tlsFreeEntries[index] == false);
 		m_tlsFreeEntries[index] = true;
-
-		m_tlsLock->Release();
 	}
 
 	void Kernel::SetCode(const runtime::CodeTable* code)
@@ -766,7 +1032,7 @@ namespace xenon
 
 		// locked access
 		{
-			m_threadLock->Acquire();
+			std::lock_guard<std::mutex> lock(m_interruptLock);
 
 			// process the thread update
 			for (auto it = m_threads.begin(); it != m_threads.end(); )
@@ -775,13 +1041,13 @@ namespace xenon
 
 				if (thread->HasCrashed())
 				{
-					GLog.Log("Kernel: Thread '%s' (ID=%d) has crashed", thread->GetName(), thread->GetIndex());
+					GLog.Err("Kernel: Thread '%s' (ID=%d) has crashed", thread->GetName(), thread->GetIndex());
 					hasCrashedThreads = true;
 				}
 
 				if (thread->HasStopped())
 				{
-					GLog.Log("Process: Thread '%s' (ID=%d) removed from thread list", thread->GetName(), thread->GetIndex());
+					GLog.Warn("Process: Thread '%s' (ID=%d) removed from thread list", thread->GetName(), thread->GetIndex());
 
 					delete thread;
 					it = m_threads.erase(it);
@@ -792,8 +1058,6 @@ namespace xenon
 					++it;
 				}
 			}
-
-			m_threadLock->Release();
 		}
 
 		// all threads exited
@@ -806,7 +1070,7 @@ namespace xenon
 		// thread crashed
 		if (hasCrashedThreads)
 		{
-			GLog.Log("Process: A thread crashed during program execution. Killing process.");
+			GLog.Err("Process: A thread crashed during program execution. Killing process.");
 			return false;
 		}
 
@@ -814,36 +1078,17 @@ namespace xenon
 		return !m_exitRequested;
 	}
 
-	static std::atomic<int> GTraceFileIndex = 1;
-
-	runtime::TraceWriter* Kernel::CreateThreadTraceWriter()
-	{
-		// tracing disabled
-		if (m_traceFileRootName.empty())
-			return nullptr;
-
-		// format a name
-		wchar_t buf[16];
-		const int traceIndex = GTraceFileIndex++;
-		wsprintf(buf, L".%d.trace", traceIndex);
-		std::wstring traceFileName = m_traceFileRootName;
-		traceFileName += buf;
-
-		// create the trace file
-		return runtime::TraceWriter::CreateTrace(CPU_RegisterBankInfo::GetInstance(), traceFileName);
-	}
-
 	//---
 
 	KernelThread* Kernel::CreateThread(const KernelThreadParams& params)
 	{
-		auto* traceFile = CreateThreadTraceWriter();
-		auto* thread = new KernelThread(this, traceFile, params);
+		auto* thread = new KernelThread(this, m_nativeKernel, params);
 
-		m_threadLock->Acquire();
-		m_threads.push_back(thread);
-		m_threadLock->Release();
-
+		{
+			std::lock_guard<std::mutex> lock(m_threadLock);
+			m_threads.push_back(thread);
+		}
+	
 		// resume execution
 		if (!params.m_suspended)
 			thread->Resume();
@@ -851,16 +1096,53 @@ namespace xenon
 		return thread;
 	}
 
-	KernelEvent* Kernel::CreateEvent(bool initialState, bool manualReset)
+	KernelEvent* Kernel::CreateEvent(bool initialState, bool manualReset, const char* name /*= nullptr*/)
 	{
 		auto* nativeEvent = m_nativeKernel->CreateEvent(manualReset, initialState);
-		return new KernelEvent(this, nativeEvent);
+		return new KernelEvent(this, nativeEvent, name);
+	}
+
+	KernelSemaphore* Kernel::CreateSemaphore(uint32_t initialCount, uint32_t maxCount, const char* name /*= nullptr*/)
+	{
+		auto* nativeSemaphore = m_nativeKernel->CreateSemaphore(initialCount, maxCount);
+		return new KernelSemaphore(this, nativeSemaphore, name);
 	}
 
 	KernelCriticalSection* Kernel::CreateCriticalSection()
 	{
 		auto* nativeCriticalSection = m_nativeKernel->CreateCriticalSection();
 		return new KernelCriticalSection(this, nativeCriticalSection);
+	}
+
+	KernelEventNotifier* Kernel::CreateEventNotifier()
+	{
+		auto* ret = new KernelEventNotifier(this);
+
+		{
+			std::lock_guard<std::mutex> lock(m_eventNotifiersLock);
+			m_eventNotifiers.push_back(ret);
+		}
+
+		return ret;
+	}
+
+	KernelTimer* Kernel::CreateManualResetTimer(const char* name /*= nullptr*/)
+	{
+		auto* nativeTimer = m_nativeKernel->CreateManualResetTimer();
+		return new KernelTimer(this, nativeTimer, name);
+
+	}
+
+	KernelTimer* Kernel::CreateSynchronizationTimer(const char* name /*= nullptr*/)
+	{
+		auto* nativeTimer = m_nativeKernel->CreateSynchronizationTimer();
+		return new KernelTimer(this, nativeTimer, name);
+	}
+
+	KernelMutant* Kernel::CreateMutant(const bool initiallyOwned, const char* name /*= nullptr*/)
+	{
+		auto* nativeMutant = m_nativeKernel->CreateMutant(initiallyOwned);
+		return new KernelMutant(this, nativeMutant, name);
 	}
 
 	//----
@@ -870,6 +1152,11 @@ namespace xenon
 		const auto timeoutValue = optTimeout ? TimeoutTicksToMs(*optTimeout) : native::TimeoutInfinite;
 		const auto result = m_nativeThread->Wait(timeoutValue, alertable);
 		return ConvWaitResult(result);
+	}
+
+	native::IKernelObject* KernelThread::GetNativeObject() const
+	{
+		return m_nativeThread;
 	}
 
 	//----

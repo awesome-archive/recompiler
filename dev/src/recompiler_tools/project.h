@@ -1,7 +1,6 @@
 #pragma once
 
 #include "projectAddressHistory.h"
-#include "projectTraceData.h"
 
 namespace tools
 {
@@ -13,6 +12,34 @@ namespace tools
 		// custom directory for the file system root
 		// if not specified than the project directory is used instead
 		std::wstring m_customRoot;
+	};
+
+	/// breakpoint list (global)
+	class ProjectBreakpointList
+	{
+	public:
+		ProjectBreakpointList();
+
+		/// clear breakpoint list
+		void Clear();
+
+		/// set breakpoint on address
+		void SetBreakpoint(const uint64 addr, const bool isSet);
+
+		/// check if address contains breakpoint
+		const bool HasBreakpoint(const uint64 addr) const;
+
+		/// toggle breakpoint, returns new state
+		const bool ToggleBreakpoint(const uint64 addr);
+
+		/// get all breakpoint
+		typedef std::vector<uint64_t> TBreakpoints;
+		inline const TBreakpoints& GetAllBreakpoints() const { return m_breakpoints; }
+
+		//--
+
+	private:
+		TBreakpoints m_breakpoints;
 	};
 
 	/// Editable project
@@ -39,6 +66,10 @@ namespace tools
 		// get project settings
 		inline ProjectSettings& GetSettings() { return m_settings; }
 
+		// get project breakpoint settings
+		inline ProjectBreakpointList& GetBreakpoints() { return m_breakpoints; }
+		inline const ProjectBreakpointList& GetBreakpoints() const { return m_breakpoints; }
+
 		//---
 
 		// save project file
@@ -58,6 +89,9 @@ namespace tools
 		// remove image from project
 		void RemoveImage(const std::shared_ptr<ProjectImage>& image);
 
+		// get all startup images
+		void GetStartupImages(std::vector<std::shared_ptr<ProjectImage>>& outImages) const;
+
 		//---
 
 		// load existing project
@@ -65,6 +99,14 @@ namespace tools
 
 		// create new project
 		static std::shared_ptr<Project> CreateProject(ILogOutput& log, const std::wstring& projectPath, const platform::Definition* platform);
+
+		//---
+
+		// get decoding context for given instruction pointer
+		decoding::Context* GetDecodingContext(const uint64 ip);
+
+		// get project image for given instruction point
+		std::shared_ptr<ProjectImage> FindImageForAddress(const uint64 ip);
 
 	private:
 		Project(const platform::Definition* platform, const wxString& projectFilePath);
@@ -82,8 +124,16 @@ namespace tools
 		// general project settings
 		ProjectSettings m_settings;
 
+		// global breakpoint settings
+		ProjectBreakpointList m_breakpoints;
+
 		// local modification flag
 		bool m_isModified;
+
+		// cached decoding context
+		uint64 m_currentDecodingContextStart;
+		uint64 m_currentDecodingContextEnd;
+		decoding::Context* m_currentDecodingContext;
 	};
 
 } // tools

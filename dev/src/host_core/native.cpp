@@ -27,6 +27,9 @@ namespace native
 
 	//---
 
+	IKernelObject::~IKernelObject()
+	{}
+
 	IRunnable::~IRunnable()
 	{}
 
@@ -36,7 +39,13 @@ namespace native
 	IEvent::~IEvent()
 	{}
 
+	ITimer::~ITimer()
+	{}
+
 	ISemaphore::~ISemaphore()
+	{}
+
+	IMutant::~IMutant()
 	{}
 
 	IThread::~IThread()

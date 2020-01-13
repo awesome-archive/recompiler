@@ -64,7 +64,7 @@
 #include "wx/clrpicker.h"
 #include "wx/ribbon/toolbar.h"
 #include "wx/valnum.h"
-#include "wx/treelist.h"
+//#include "wx/treelist.h"
 #include "wx/dataview.h"
 #include "wx/renderer.h"
 #include "wx/richtext/richtextctrl.h"
@@ -73,61 +73,8 @@
 #include "wx/wfstream.h"
 #include "wx/filedlg.h"
 #include "wx/process.h"
-
-// Windows
-#include <windows.h>
-#include <commctrl.h>
-#include <dbghelp.h>
-
-// Widgets require these libs to link with 
-#pragma comment (lib, "comctl32.lib")
-#pragma comment (lib, "rpcrt4.lib")
-#pragma comment (lib, "gdiplus.lib")
-#pragma comment (lib, "dbghelp.lib")
-
-// common shit
-class Project;
-
-// Warnings
-#pragma warning ( disable: 4275 )
-
-template< typename T >
-const T& TemplateMin( const T& a, const T& b )
-{
-	if ( a < b ) return a;
-	return b;
-}
-
-template< typename T >
-const T& TemplateMax( const T& a, const T& b )
-{
-	if ( a > b ) return a;
-	return b;
-}
-
-template< typename T >
-const T& TemplateClamp( const T& v, const T& a, const T& b )
-{
-	if ( v <= a ) return a;
-	if ( v >= b ) return b;
-	return v;
-}
-
-// Min max for GDI+
-#ifndef min 
-#define min TemplateMin
-#endif
-
-#ifndef max
-#define max TemplateMax
-#endif
-
-// GDI+
-#include <GdiPlus.h>
-
-// Undefine
-#undef min
-#undef max
+#include "wx/datetime.h"
+#include "wx/accel.h"
 
 // Backend
 #include "../recompiler_core/build.h"
@@ -135,14 +82,78 @@ const T& TemplateClamp( const T& v, const T& a, const T& b )
 // Crap
 #include "config.h"
 #include "app.h"
-#include "fileDialog.h"
 #include "bitmaps.h"
 #include "logWindow.h"
+
+template< typename T >
+const T& TemplateClamp(const T& v, const T& a, const T& b)
+{
+	if (v <= a) return a;
+	if (v >= b) return b;
+	return v;
+}
 
 namespace tools
 {
 	class Project;
 	class ProjectImage;
+	class MemoryView;
+
+	enum class ValueViewMode
+	{
+		Auto,
+		Hex,
+	};
 
 	static const uint64 INVALID_ADDRESS = ~(uint64)0;
-}
+
+	//-----------------------------------------------------------------------------
+
+	/// Navigation type
+	enum class NavigationType
+	{
+		LocalStart,
+		LocalEnd,
+		LocalStepBack,
+		LocalStepIn,
+
+		GlobalStart,
+		GlobalEnd,
+		GlobalStepBack,
+		GlobalStepIn,
+
+		HorizontalPrev,
+		HorizontalNext,
+
+		ToggleBreakpoint,
+		RunForward,
+		RunBackward,
+
+		SyncPos, 
+
+		HistoryBack,
+		HistoryForward,
+
+		Follow,
+		ReverseFollow,
+
+		Advance,
+	};
+
+	// call tree navigation
+	class INavigationHelper
+	{
+	public:
+		virtual ~INavigationHelper() {};
+
+		virtual std::shared_ptr<ProjectImage> GetCurrentImage() { return nullptr; }
+		virtual MemoryView* GetCurrentMemoryView() { return nullptr; }
+		virtual bool NavigateToFrame(const TraceFrameID id) { return false; };
+		virtual bool NavigateToCodeAddress(const uint64 id, const bool addToHistory) { return false; };
+		virtual bool NavigateToMemoryAddress(const uint64 memoryAddress) { return false; };
+		virtual bool Navigate(const NavigationType type) { return false; };
+	};
+
+	//-----------------------------------------------------------------------------
+
+} // tools

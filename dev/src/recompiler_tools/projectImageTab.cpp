@@ -5,6 +5,7 @@
 #include "projectImageTab.h"
 #include "projectMemoryView.h"
 #include "gotoAddressDialog.h"
+#include "buildDialog.h"
 
 #include "../recompiler_core/codeGenerator.h"
 #include "../recompiler_core/decodingEnvironment.h"
@@ -12,11 +13,13 @@
 #include "../recompiler_core/decodingContext.h"
 #include "../recompiler_core/decodingMemoryMap.h"
 #include "../recompiler_core/decodingNameMap.h"
-#include "buildDialog.h"
+#include "../recompiler_core/decodingAddressMap.h"
+#include "findSymbolDialog.h"
 
 namespace tools
 {
 	BEGIN_EVENT_TABLE(ProjectImageTab, ProjectTab)
+		EVT_MENU(XRCID("navigateFind"), ProjectImageTab::OnFindSymbol)
 		EVT_MENU(XRCID("navigateGoTo"), ProjectImageTab::OnGotoAddress)
 		EVT_MENU(XRCID("navigatePrevious"), ProjectImageTab::OnPrevAddress)
 		EVT_MENU(XRCID("navigateNext"), ProjectImageTab::OnNextAddress)
@@ -45,7 +48,7 @@ namespace tools
 
 	ProjectImageTab::ProjectImageTab(ProjectWindow* parent, wxWindow* tabs, const std::shared_ptr<ProjectImage>& img)
 		: ProjectTab(parent, tabs, ProjectTabType::Image)
-		, m_disassemblyView(new ImageMemoryView(img, this))
+		, m_disassemblyView(new ImageMemoryView(parent->GetProject(), img, this))
 		, m_disassemblyPanel(nullptr)
 		, m_importSearchTimer(this, 10000)
 		, m_exportSearchTimer(this, 10001)
@@ -114,7 +117,7 @@ namespace tools
 		}
 
 		// go to the address from address history
-		NavigateToAddress(img->GetAddressHistory().GetCurrentAddress(), false);
+		NavigateToCodeAddress(img->GetAddressHistory().GetCurrentAddress(), false);
 
 		// refresh ui
 		RefreshSectionList();
@@ -368,19 +371,98 @@ namespace tools
 		ctrl->Connect(wxEVT_CHOICE, wxCommandEventHandler(ProjectImageTab::OnSelectSection), nullptr, this);
 	}
 
-	bool ProjectImageTab::NavigateBack()
+	bool ProjectImageTab::Navigate(const NavigationType type)
 	{
-		const auto newAddress = m_image->GetAddressHistory().NavigateBack();
-		return NavigateToAddress(newAddress, false);
+		switch (type)
+		{
+			case NavigationType::HistoryBack:
+			{
+				const auto newAddress = m_image->GetAddressHistory().NavigateBack();
+				return NavigateToCodeAddress(newAddress, false);
+			}
+
+			case NavigationType::HistoryForward:
+			{
+				const auto newAddress = m_image->GetAddressHistory().NavigateForward();
+				return NavigateToCodeAddress(newAddress, false);
+			}
+
+			case NavigationType::Follow:
+			{
+				// get the source section of the image
+				uint64 lowAddres = 0, highAddress = 0;
+				if (!m_disassemblyPanel->GetSelectionAddresses(lowAddres, highAddress))
+					return false;
+
+				const auto* section = m_image->GetEnvironment().GetImage()->FindSectionForAddress(lowAddres);
+				if (section == nullptr)
+					return false;
+
+				const uint32 branchTargetAddress = m_image->GetEnvironment().GetDecodingContext()->GetAddressMap().GetReferencedAddress(lowAddres);
+				if (branchTargetAddress)
+					return NavigateToCodeAddress(branchTargetAddress, true);
+
+				return false;
+			}
+
+			case NavigationType::ReverseFollow:
+			{				
+				// get the source section of the image
+				uint64 lowAddres = 0, highAddress = 0;
+				if (!m_disassemblyPanel->GetSelectionAddresses(lowAddres, highAddress))
+					return false;
+
+				const auto* section = m_image->GetEnvironment().GetImage()->FindSectionForAddress(lowAddres);
+				if (section == nullptr)
+					return false;
+
+				// back navigation?
+				std::vector<uint64> sourceAddresses;
+				m_image->GetEnvironment().GetDecodingContext()->GetAddressMap().GetAddressReferencers(lowAddres, sourceAddresses);
+				if (sourceAddresses.size() > 1)
+				{
+					wxMenu menu;
+
+					for (uint32 i = 0; i < sourceAddresses.size(); ++i)
+					{
+						const auto menuId = 16000 + i;
+						menu.Append(16000 + i, wxString::Format("0x%08llx", sourceAddresses[i]));
+					}
+
+					menu.Bind(wxEVT_MENU, [this, sourceAddresses](const wxCommandEvent& evt)
+					{
+						const auto it = evt.GetId() - 16000;
+						return NavigateToCodeAddress(sourceAddresses[it], true);
+					});
+
+					PopupMenu(&menu);
+				}
+
+				return true;
+			}
+
+			case NavigationType::ToggleBreakpoint:
+			{
+				const auto currentAddress = m_disassemblyPanel->GetCurrentRVA();
+				GetProject()->GetBreakpoints().ToggleBreakpoint(currentAddress);
+				return true;
+			}
+		}
+
+		return false;
 	}
 
-	bool ProjectImageTab::NavigateForward()
+	std::shared_ptr<ProjectImage> ProjectImageTab::GetCurrentImage()
 	{
-		const auto newAddress = m_image->GetAddressHistory().NavigateForward();
-		return NavigateToAddress(newAddress, false);
+		return m_image;
 	}
 
-	bool ProjectImageTab::NavigateToAddress(const uint64 address, const bool addToHistory)
+	MemoryView* ProjectImageTab::GetCurrentMemoryView()
+	{
+		return m_disassemblyPanel;
+	}
+
+	bool ProjectImageTab::NavigateToCodeAddress(const uint64 address, const bool addToHistory)
 	{
 		// do not navigate to invalid address
 		if (address == INVALID_ADDRESS)
@@ -411,20 +493,30 @@ namespace tools
 		// get the section
 		const auto image = m_image->GetEnvironment().GetImage();
 		const auto* section = image->GetSection(selectedSectionID);
-		NavigateToAddress(section->GetVirtualOffset() + image->GetBaseAddress(), true);
+		NavigateToCodeAddress(section->GetVirtualOffset() + image->GetBaseAddress(), true);
 	}
 
+	void ProjectImageTab::OnFindSymbol(wxCommandEvent& evt)	
+	{
+		FindSymbolDialog dlg(m_image->GetEnvironment(), this);
+		if (0 == dlg.ShowModal())
+		{
+			const auto address = dlg.GetSelectedSymbolAddress();
+			NavigateToCodeAddress(address, true);
+		}
+	}
+	
 	void ProjectImageTab::OnGotoAddress(wxCommandEvent& evt)
 	{
 		GotoAddressDialog dlg(this, m_image, m_disassemblyPanel);
 		const uint32 newAddres = dlg.GetNewAddress();
-		NavigateToAddress(newAddres, true);
+		NavigateToCodeAddress(newAddres, true);
 	}
 
 	void ProjectImageTab::OnGotoEntryAddress(wxCommandEvent& evt)
 	{
 		const auto entryAddress = m_image->GetEnvironment().GetDecodingContext()->GetEntryPointRVA();
-		NavigateToAddress(entryAddress, true);
+		NavigateToCodeAddress(entryAddress, true);
 	}
 
 	void ProjectImageTab::OnBuildCode(wxCommandEvent& evt)
@@ -440,12 +532,14 @@ namespace tools
 
 	void ProjectImageTab::OnNextAddress(wxCommandEvent& evt)
 	{
-		NavigateForward();
+		if (!Navigate(NavigationType::HistoryBack))
+			wxMessageBox(wxT("Navigation failed"), wxT("Go to next address"), wxICON_WARNING, this);
 	}
 
 	void ProjectImageTab::OnPrevAddress(wxCommandEvent& evt)
 	{
-		NavigateBack();
+		if (!Navigate(NavigationType::HistoryForward))
+			wxMessageBox(wxT("Navigation failed"), wxT("Go to next address"), wxICON_WARNING, this);
 	}
 
 	void ProjectImageTab::OnSettingsChanged(wxCommandEvent& evt)
@@ -682,7 +776,7 @@ namespace tools
 			if (index < image->GetNumImports())
 			{
 				const auto* dat = image->GetImport(index);
-				NavigateToAddress(dat->GetEntryAddress(), true);
+				NavigateToCodeAddress(dat->GetEntryAddress(), true);
 			}
 		}
 	}
@@ -699,7 +793,7 @@ namespace tools
 			if (index < image->GetNumExports())
 			{
 				const auto* dat = image->GetExports(index);
-				NavigateToAddress(dat->GetEntryPointAddress(), true);
+				NavigateToCodeAddress(dat->GetEntryPointAddress(), true);
 			}
 		}
 	}
@@ -716,7 +810,7 @@ namespace tools
 			if (index < image->GetNumSymbols())
 			{
 				const auto* dat = image->GetSymbol(index);
-				NavigateToAddress(dat->GetAddress(), true);
+				NavigateToCodeAddress(dat->GetAddress(), true);
 			}
 		}
 	}
@@ -730,7 +824,7 @@ namespace tools
 			const auto addr = (uint32)box->GetItemData(id);
 			if (addr != 0)
 			{
-				NavigateToAddress(addr, true);
+				NavigateToCodeAddress(addr, true);
 			}
 		}
 	}

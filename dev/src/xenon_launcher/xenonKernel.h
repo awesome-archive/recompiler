@@ -36,10 +36,20 @@ namespace xenon
 
 	//---------------------------------------------------------------------------
 
-	enum class KernelObjectType : uint32
+	/// IRQ level 
+	enum KernelIrql : uint32_t
+	{
+		IRQL_Normal = 0,
+		IRQL_APC = 1,
+		IRQL_Dispatch = 2,
+		IRQL_DPC = 3,
+	};
+
+	enum class KernelObjectType : uint8
 	{
 		Unknown = 0,
 		Process = 10,
+		APC = 18,
 		Thread = 20,
 		CriticalSection = 30,
 		Semaphore = 40,
@@ -52,6 +62,10 @@ namespace xenon
 		FileHandle = 110,
 		FileSysEntry = 120,
 		ThreadBlock = 130,
+		EventNotifier = 140,
+		Timer = 150,
+		Mutant = 160,
+		Waitable = 255,
 	};
 
 	enum class NativeKernelObjectType : int32
@@ -88,6 +102,71 @@ namespace xenon
 
 	//---------------------------------------------------------------------------
 
+	/// entry in the list
+	struct KernelListEntry
+	{
+		Pointer<KernelListEntry> m_flink;
+		Pointer<KernelListEntry> m_blink;
+	};
+
+	/// List wrapper, all data big-endian
+	class KernelList
+	{
+	public:
+		KernelList();
+
+		// insert address to the list
+		void Insert(Pointer<KernelListEntry> listEntryPtr);
+
+		// check if address is queued
+		bool IsQueued(Pointer<KernelListEntry> listEntryPtr);
+
+		// remove entry
+		void Remove(Pointer<KernelListEntry> listEntryPtr);
+
+		// shift data
+		const Pointer<KernelListEntry> Pop();
+
+		// do we have pending data ?
+		bool HasPending() const;
+
+	private:
+		static const uint32 INVALID = 0xE0FE0FFF;
+		Pointer<KernelListEntry> m_headAddr;
+	};
+
+	//---------------------------------------------------------------------------
+
+	// http://www.nirsoft.net/kernel_struct/vista/DISPATCHER_HEADER.html
+	// http://www.nirsoft.net/kernel_struct/vista/KEVENT.html
+	struct KernelDispatchHeader
+	{
+		Field<uint32> m_typeAndFlags;
+		Field<uint32> m_signalState;
+		KernelListEntry m_listEntry;
+
+		inline KernelDispatchHeader()
+		{
+			Reset();
+		}
+
+		inline void Reset()
+		{
+			m_typeAndFlags = 0;
+			m_signalState = 0;
+			m_listEntry = KernelListEntry();
+		}
+	};
+
+	// in-memory header for the semaphore
+	struct KernelSemaphoreHeader
+	{
+		KernelDispatchHeader m_dispatchHeader;
+		Field<uint32_t> m_maxCount;
+	};
+
+	//---------------------------------------------------------------------------
+
 	/// Base kernel object
 	class IKernelObject
 	{
@@ -102,7 +181,7 @@ namespace xenon
 		inline const KernelObjectType GetType() const { return m_type; }
 
 		// get name of kernel object (may be empty)
-		inline const char* GetName() const { return m_name.c_str(); }
+		inline const char* GetName() const { return m_name.empty() ? nullptr : m_name.c_str(); }
 
 		// get index of the object (NOT ID)
 		inline const uint32 GetIndex() const { return m_index; }
@@ -120,10 +199,6 @@ namespace xenon
 		// does this object support waiting ?
 		// the Wait method is still up to the object
 		virtual bool CanWait() const { return false; }
-
-	protected:
-		// bind the kernel object with internal xenon dispatch list
-		void SetNativePointer(void* nativePtr);
 
 	private:
 		// object type & name
@@ -161,31 +236,45 @@ namespace xenon
 
 	//---------------------------------------------------------------------------
 
-	/// List wrapper, all data big-endian
-	class KernelList
+	// data block for the aync procedure call
+	class KernelAPCData
 	{
 	public:
-		KernelList();
+		Field<KernelObjectType> m_type;
+		Field<uint8_t> m_padding;
+		Field<uint8_t> m_processorMode;
+		Field<uint8_t> m_inqueue;
+		Field<Pointer<KernelDispatchHeader>> m_threadPtr;
+		KernelListEntry m_listEntry;
+		Field<MemoryAddress> m_kernelRoutine;
+		Field<MemoryAddress> m_rundownRoutine;
+		Field<MemoryAddress> m_normalRoutine;
+		Field<uint32_t> m_normalContext;
+		Field<uint32_t> m_arg1;
+		Field<uint32_t> m_arg2;
 
-		// insert address to the list
-		void Insert(const uint32 listEntryPtr);
+		inline KernelAPCData()
+		{
+			Reset();
+		}
 
-		// check if address is queued
-		bool IsQueued(const uint32 listEntryPtr);
-
-		// remove entry
-		void Remove(const uint32 listEntryPtr);
-
-		// shift data
-		const uint32 Pop();
-
-		// do we have pending data ?
-		bool HasPending() const;
-
-	private:
-		static const uint32 INVALID = 0xE0FE0FFF;
-		uint32 m_headAddr;
+		void Reset()
+		{
+			m_threadPtr = nullptr;
+			m_listEntry = KernelListEntry();
+			m_type = KernelObjectType::APC;
+			m_processorMode = 0;
+			m_processorMode = 0;
+			m_kernelRoutine = MemoryAddress();
+			m_rundownRoutine = MemoryAddress();
+			m_normalRoutine = MemoryAddress();
+			m_inqueue = 0;
+			m_normalContext = 0;
+			m_arg1 = 0;
+			m_arg2 = 0;
+		}
 	};
+	static_assert(sizeof(KernelAPCData) == 40, "Size is invalid");
 
 	//---------------------------------------------------------------------------
 
@@ -194,7 +283,7 @@ namespace xenon
 	{
 	public:
 		KernelDispatcher(native::ICriticalSection* lock);
-		~KernelDispatcher();
+		virtual ~KernelDispatcher();
 
 		void Lock();
 		void Unlock();
@@ -213,7 +302,7 @@ namespace xenon
 	{
 	public:
 		KernelStackMemory(Kernel* kernel, const uint32 size);
-		~KernelStackMemory();
+		virtual ~KernelStackMemory();
 
 		// get base of the stack
 		inline void* GetBase() const { return m_base; }
@@ -228,7 +317,6 @@ namespace xenon
 		void*				m_base;		// base address (stack bottom)
 		void*				m_top;		// stack top
 		uint32				m_size;		// size of the stack buffer
-		native::IMemory*	m_memory;	// memory subsystem
 	};
 
 	//---------------------------------------------------------------------------
@@ -238,10 +326,16 @@ namespace xenon
 	{
 	public:
 		KernelThreadMemory(Kernel* kernel, const uint32 stackSize, const uint32 threadId, const uint64 entryPoint, const uint32 cpuIndex);
-		~KernelThreadMemory();
+		virtual ~KernelThreadMemory();
 
 		// get thread stack
 		inline KernelStackMemory& GetStack() { return m_stack; }
+
+		// get thread data block
+		inline const void* GetBlockData() const { return m_block; }
+
+		// get size of thread data
+		inline const uint32 GetBlockSize() const { return m_blockSize; }
 
 		// get the thread data object address
 		inline const uint32 GetThreadDataAddr() const { return m_threadDataAddr;  }
@@ -262,6 +356,7 @@ namespace xenon
 		static const uint32 TLS_COUNT = 64;
 
 		void*				m_block;	// memory block
+		uint32				m_blockSize; // total size of thread data
 
 		uint32				m_tlsDataAddr;		// runtime TLS table
 		uint32				m_prcAddr;			// PRC table address
@@ -278,7 +373,7 @@ namespace xenon
 	{
 	public:
 		KernelTLS(Kernel* kernel);
-		~KernelTLS();
+		virtual ~KernelTLS();
 
 		// set TLS entry 
 		void Set(const uint32 entryIndex, const uint64 value);
@@ -298,7 +393,7 @@ namespace xenon
 	{
 	public:
 		KernelCriticalSection( Kernel* kernel, native::ICriticalSection* nativeObject );
-		~KernelCriticalSection();
+		virtual ~KernelCriticalSection();
 
 		void Enter();
 		void Leave();
@@ -315,9 +410,10 @@ namespace xenon
 	class IKernelWaitObject : public IKernelObjectRefCounted
 	{
 	public:
-		IKernelWaitObject(Kernel* kernel, const KernelObjectType type, const char* name);
+		IKernelWaitObject(Kernel* kernel, const KernelObjectType type, const char* name = nullptr);
 
 		virtual bool CanWait() const override final { return true; }
+		virtual native::IKernelObject* GetNativeObject() const = 0;
 		virtual uint32 Wait(const uint32 waitReason, const uint32 processorMode, const bool alertable, const int64* optTimeout) = 0;
 	};
 
@@ -327,18 +423,110 @@ namespace xenon
 	class KernelEvent : public IKernelWaitObject
 	{
 	public:
-		KernelEvent(Kernel* kernel, native::IEvent* nativeEvent, const char* name = "Event");
-		~KernelEvent();
+		KernelEvent(Kernel* kernel, native::IEvent* nativeEvent, const char* name = nullptr);
+		virtual ~KernelEvent();
 
 		uint32 Set( uint32 priorityIncrement, bool wait);
 		uint32 Pulse(uint32 priorityIncrement, bool wait);
 		uint32 Reset();
-		void Clear();
 
 		virtual uint32 Wait(const uint32 waitReason, const uint32 processorMode, const bool alertable, const int64* optTimeout) override final;
+		virtual native::IKernelObject* GetNativeObject() const override final;
 
 	private:
 		native::IEvent*		m_event;
+	};
+
+	//---------------------------------------------------------------------------
+
+	/// Classic semaphore
+	class KernelSemaphore : public IKernelWaitObject
+	{
+	public:
+		KernelSemaphore(Kernel* kernel, native::ISemaphore* nativeSemaphore, const char* name = nullptr);
+		virtual ~KernelSemaphore();
+
+		uint32 Release(uint32 count);
+
+		virtual uint32 Wait(const uint32 waitReason, const uint32 processorMode, const bool alertable, const int64* optTimeout) override final;
+		virtual native::IKernelObject* GetNativeObject() const override final;
+
+	private:
+		native::ISemaphore*		m_semaphore;
+	};
+
+	//---------------------------------------------------------------------------
+
+	/// Timer
+	class KernelTimer : public IKernelWaitObject
+	{
+	public:
+		KernelTimer(Kernel* kernel, native::ITimer* nativeTimer, const char* name = nullptr);
+		virtual ~KernelTimer();
+
+		// setup timer
+		bool Setup(int64_t waitTime, int64_t periodMs, MemoryAddress callbackFuncAddress, uint32 callbackArg);
+
+		// cancel pending timer
+		bool Cancel();
+
+		virtual uint32 Wait(const uint32 waitReason, const uint32 processorMode, const bool alertable, const int64* optTimeout) override final;
+		virtual native::IKernelObject* GetNativeObject() const override final;
+
+	private:
+		native::ITimer* m_timer;
+	};
+
+	//---------------------------------------------------------------------------
+
+	/// Mutant object
+	class KernelMutant : public IKernelWaitObject
+	{
+	public:
+		KernelMutant(Kernel* kernel, native::IMutant* nativeMutant, const char* name = nullptr);
+		virtual ~KernelMutant();
+
+		// release mutant
+		bool Release();
+
+		virtual uint32 Wait(const uint32 waitReason, const uint32 processorMode, const bool alertable, const int64* optTimeout) override final;
+		virtual native::IKernelObject* GetNativeObject() const override final;
+
+	private:
+		native::IMutant* m_mutant;
+	};
+
+	//---------------------------------------------------------------------------
+
+	/// Notifier
+	class KernelEventNotifier : public IKernelObject
+	{
+	public:
+		KernelEventNotifier(Kernel* kernel);
+		virtual ~KernelEventNotifier();
+
+		// checks if the queue is empty
+		const bool Empty() const;
+
+		// push the notification into the queue
+		void PushNotification(const uint32 id, const uint32 data);
+
+		// pop notification from the queue, returns false if the queue is empty
+		// gets first from the list 
+		const bool PopNotification(uint32& outId, uint32& outData);
+
+		// pop notification with specific ID
+		const bool PopSpecificNotification(const uint32 id, uint32& outData);
+
+	private:
+		struct Notifcation
+		{
+			uint32 m_id;
+			uint32 m_data;
+		};
+
+		std::vector<Notifcation> m_notifications;
+		mutable std::mutex m_notificationLock;
 	};
 
 	//---------------------------------------------------------------------------
@@ -374,16 +562,13 @@ namespace xenon
 		// get DPC dispatcher
 		inline KernelDispatcher& GetDPCDispatcher() const { return *m_dpcDispatcher; }
 
-		// get memory allocator
-		inline native::IMemory& GetNativeMemory() const { return *m_nativeMemory;  }
-
-		// get the native kernel
-		inline native::IKernel& GetNativeKernel() const { return *m_nativeKernel; }
-
 		// get master code table
 		inline const runtime::CodeTable& GetCode() const { return *m_codeTable; }
 
 		//---
+
+		// stop all running threads
+		void StopAllThreads();
 
 		// allocate entry in the object list
 		void AllocIndex(IKernelObject* object, uint32& outIndex);
@@ -398,13 +583,34 @@ namespace xenon
 		IKernelObject* ResolveHandle(const uint32 handle, KernelObjectType requestedType);
 
 		// resolve kernel object from dispatch object
-		IKernelObject* ResolveObject(void* nativePtr, NativeKernelObjectType requestedType, const bool allowCreate = true);
+		IKernelObject* ResolveObject(Pointer<KernelDispatchHeader> dispatchEntry, NativeKernelObjectType requestedType, const bool allowCreate = true);
+
+		// resolve named kernel object (SLOW)
+		IKernelObject* ResolveNamedObject(const char* name, KernelObjectType requestedType);
+
+		// make a copy of handle
+		bool DuplicateHandle(const uint32 handle, uint32& newHandle);
+
+		// close handle
+		bool CloseHandle(const uint32 handle);
 
 		// set master code table
 		void SetCode(const runtime::CodeTable* code);
 
 		// execute interrupt code
-		void ExecuteInterrupt(const uint32 cpuIndex, const uint32 callback, const uint64* args, const uint32 numArgs, const bool trace);
+		void ExecuteInterrupt(const uint32 cpuIndex, const uint32 callback, const uint64* args, const uint32 numArgs, const char* name = "IRQ");
+
+		// send global notification to all event notifiers
+		void PostEventNotification(const uint32 eventId, const uint32 eventData);
+
+		// wait for multiple waitable objects
+		uint32 WaitMultiple(const std::vector<IKernelWaitObject*>& waitObjects, const bool waitAll, const uint64* timeout, const bool alertable);
+
+		// signal object and wait
+		uint32 SignalAndWait(IKernelWaitObject* signalObject, IKernelWaitObject* waitObject, const bool alertable, const uint64_t* timeout);
+
+		// bind dispatch header pointer to kernel object
+		void BindDispatchObjectToKernelObject(IKernelObject* object, Pointer<KernelDispatchHeader> dispatchEntry);
 
 		//---
 
@@ -420,10 +626,33 @@ namespace xenon
 		KernelThread* CreateThread(const KernelThreadParams& params);
 
 		/// create an event
-		KernelEvent* CreateEvent(bool initialState, bool manualReset);
+		KernelEvent* CreateEvent(bool initialState, bool manualReset, const char* name = nullptr);
+
+		/// create an semaphore
+		KernelSemaphore* CreateSemaphore(uint32_t initialCount, uint32_t maxCount, const char* name = nullptr);
 
 		/// create a critical section
 		KernelCriticalSection* CreateCriticalSection();
+
+		/// create an event notifier
+		KernelEventNotifier* CreateEventNotifier();
+
+		/// create a timer with manual reset
+		KernelTimer* CreateManualResetTimer(const char* name = nullptr);
+
+		/// create a synchronization timer
+		KernelTimer* CreateSynchronizationTimer(const char* name = nullptr);
+
+		/// create a mutant (mutex)
+		KernelMutant* CreateMutant(const bool initiallyOwned, const char* name = nullptr);
+
+		//----
+
+		// raise IRLQ, returns previous value
+		KernelIrql RaiseIRQL(const KernelIrql level);
+
+		// lower IRQ level, returns previous value
+		KernelIrql LowerIRQL(const KernelIrql level);
 
 		//----
 
@@ -431,38 +660,77 @@ namespace xenon
 		bool AdvanceThreads();
 
 	private:
-		static const uint32			MAX_OBJECT = 65536;
-		static const uint32			MAX_TLS = 64;
+		static const uint32 MAX_OBJECT = 65536;
+		static const uint32 MAX_TLS = 64;
 
-		native::IKernel*			m_nativeKernel;
-		native::IMemory*			m_nativeMemory;
+		//---
 
-		const runtime::CodeTable*	m_codeTable;
+		// create kernel object from scratch, used when it first seen in the Resolve
+		IKernelObject* CreateInlinedObject(Pointer<KernelDispatchHeader> nativeAddres, NativeKernelObjectType requestedType);
 
-		IKernelObject*				m_objects[MAX_OBJECT];
-		uint32						m_maxObjectIndex;
+		//---
 
-		uint32						m_freeIndices[MAX_OBJECT];
-		uint32						m_numFreeIndices;
+		// External request to kill everything and leave
+		std::atomic<bool> m_exitRequested;
 
-		KernelDispatcher*			m_dpcDispatcher;
+		//---
 
-		native::ICriticalSection*	m_lock;
-		native::ICriticalSection*	m_interruptLock;
+		// native kernel is used to do the heavy lifting when the STD is not enough
+		native::IKernel* m_nativeKernel;
 
-		native::ICriticalSection*	m_tlsLock;
-		bool						m_tlsFreeEntries[ MAX_TLS ];
+		// all executable code is registered in this table
+		// this provides the implementation for each executable region in memory
+		const runtime::CodeTable* m_codeTable;
 
-		bool						m_exitRequested;
+		//--
 
-		std::wstring				m_traceFileRootName;
+		// all kernel objects
+		IKernelObject* m_objects[MAX_OBJECT];
+		uint32 m_maxObjectIndex;
+
+		// free indices for kernel objects
+		uint32 m_freeIndices[MAX_OBJECT];
+		uint32 m_numFreeIndices;
+		std::mutex m_lock;
+
+		// list of mapped objects
+		std::unordered_map<std::string, IKernelObject*> m_namedObjets;
+
+		// map of the dispatch headers to object pointers
+		std::unordered_map<uint32_t, IKernelObject*> m_dispatchHeaderToObject;
+		std::unordered_map<IKernelObject*, uint32_t> m_objectToDispatchHeader;
 
 		// active threads
-		typedef std::vector< KernelThread* >	TThreads;
-		TThreads					m_threads;
-		native::ICriticalSection*	m_threadLock;
+		typedef std::vector< KernelThread* > TThreads;
+		TThreads m_threads;
+		std::mutex m_threadLock;
 
-		runtime::TraceWriter* CreateThreadTraceWriter();
+		// active event notifiers
+		typedef std::vector< KernelEventNotifier* > TEventNotifiers;
+		TEventNotifiers m_eventNotifiers;
+		std::mutex m_eventNotifiersLock;
+
+		//--
+
+		// kernel DPC (deferred procedure call) implementation
+		KernelDispatcher* m_dpcDispatcher;
+
+		//--
+
+		// lock for interrupt execution (we can do only one)
+		std::mutex m_interruptLock;
+
+		//---
+
+		// TLS (thread local storage) mapping
+		// TODO: move to Process
+		std::mutex m_tlsLock;
+		bool m_tlsFreeEntries[ MAX_TLS ];
+
+		///----
+
+		// IRQ level
+		std::atomic<KernelIrql> m_irqLevel;
 	};
 
 	//---------------------------------------------------------------------------

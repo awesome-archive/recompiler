@@ -1,189 +1,130 @@
 #include "build.h"
-#include "xenonLibUtils.h" 
+#include "xenonLib.h"  
 #include "xenonLibNatives.h"
 #include "xenonThread.h"
-#include <mutex>
 #include "xenonPlatform.h"
 #include "xenonInput.h"
+#include "xenonBindings.h"
 
-//---------------------------------------------------------------------------
-
-static const uint32 XINPUT_FLAG_GAMEPAD = 0x01;
-static const uint32 XINPUT_FLAG_ANY_USER = 1 << 30;
-
-uint64 __fastcall XboxInput_XamResetInactivity(uint64 ip, cpu::CpuRegs& regs)
+namespace xenon
 {
-	const auto val = regs.R3;
-	GLog.Log("XamResetInactivity(%d)", val);
-	RETURN_ARG(0);
-}
-
-uint64 __fastcall XboxInput_XamEnableInactivityProcessing(uint64 ip, cpu::CpuRegs& regs)
-{
-	const auto val = regs.R3;
-	const auto val2 = regs.R4;
-	GLog.Log("XamEnableInactivityProcessing(%d, %d)", val, val2);
-	RETURN_ARG(0);
-}
-
-uint64 __fastcall XboxInput_XamUserGetDeviceContext(uint64 ip, cpu::CpuRegs& regs)
-{
-	auto user = (uint32)regs.R3;
-	auto unk = regs.R4;
-	void* outPtr = (void*)regs.R5;
-
-	GLog.Log("XamUserGetDeviceContext(%d, %d, %.8X)", user, unk, outPtr);
-
-	cpu::mem::store<uint32>(outPtr, 0);
-
-	if (!user || (user & 0xFF) == 0xFF)
+	namespace lib
 	{
-		RETURN_ARG(0);
-	}
-	else
-	{
-		RETURN_ARG(-1);
-	}
-}
 
-uint64 __fastcall XboxInput_XamInputGetState(uint64 ip, cpu::CpuRegs& regs)
-{
-	auto user = (uint32)(regs.R3);
-	auto flags = (uint32)(regs.R4);
-	auto* statePtr = (xnative::X_INPUT_STATE*)(uint32)regs.R5;
+		//---------------------------------------------------------------------------
 
-	GLog.Log("XamInputGetState(%d, %.8X, %.8X)", user, flags, statePtr);
+		static const uint32 XINPUT_FLAG_GAMEPAD = 0x01;
+		static const uint32 XINPUT_FLAG_ANY_USER = 1 << 30;
 
-	if ((flags & 0xFF) && (flags & XINPUT_FLAG_GAMEPAD) == 0)
-		RETURN_ARG(xnative::X_ERROR_DEVICE_NOT_CONNECTED);
+		X_STATUS Xbox_XamResetInactivity()
+		{
+			return X_STATUS_SUCCESS;
+		}
 
-	if ((user & 0xFF) == 0xFF || (flags & XINPUT_FLAG_ANY_USER))
-		user = 0;
+		X_STATUS Xbox_XamEnableInactivityProcessing()
+		{
+			return X_STATUS_SUCCESS;
+		}
 
-	auto ret = GPlatform.GetInputSystem().GetState(user, statePtr);
-	RETURN_ARG(ret);
-}
+		X_STATUS Xbox_XamUserGetDeviceContext(uint32 userIndex, uint32, Pointer<uint32> outPtr)
+		{
+			*outPtr = 0;
 
-uint64 __fastcall XboxInput_XamInputGetCapabilities(uint64 ip, cpu::CpuRegs& regs)
-{
-	auto user = (uint32)regs.R3;
-	auto flags = (uint32)regs.R4;
-	auto capsPtr = (void*)(uint32)regs.R5;
+			if (!userIndex || (userIndex & 0xFF) == 0xFF)
+				return 0;
+			else
+				return -1;
+		}
 
-	GLog.Log("XamInputGetCapabilities(%d, %.8X, %.8X)", user, flags, capsPtr);
+		X_STATUS Xbox_XamInputGetState(uint32 userIndex, uint32 flags, Pointer<X_INPUT_STATE> outStatePtr)
+		{
+			if ((flags & 0xFF) && (flags & XINPUT_FLAG_GAMEPAD) == 0)
+				return X_ERROR_DEVICE_NOT_CONNECTED;
 
-	if (!capsPtr)
-		RETURN_ARG(xnative::X_ERROR_BAD_ARGUMENTS);
+			if ((userIndex & 0xFF) == 0xFF || (flags & XINPUT_FLAG_ANY_USER))
+				userIndex = 0;
 
-	if ((flags & 0xFF) && (flags & XINPUT_FLAG_GAMEPAD) == 0)
-		RETURN_ARG(xnative::X_ERROR_DEVICE_NOT_CONNECTED);
+			return GPlatform.GetInputSystem().GetState(userIndex, outStatePtr.GetNativePointer());
+		}
 
-	if ((user & 0xFF) == 0xFF || (flags & XINPUT_FLAG_ANY_USER))
-		user = 0;
+		X_STATUS Xbox_XamInputGetCapabilities(uint32 userIndex, uint32 flags, Pointer<X_INPUT_CAPABILITIES> outCapsPtr)
+		{
+			if (!outCapsPtr.IsValid())
+				return X_ERROR_BAD_ARGUMENTS;
 
-	auto* caps = (xnative::X_INPUT_CAPABILITIES*)capsPtr;
-	const auto ret = GPlatform.GetInputSystem().GetCapabilities(user, flags, caps);
-	RETURN_ARG(ret);
-}
+			if ((flags & 0xFF) && (flags & XINPUT_FLAG_GAMEPAD) == 0)
+				return X_ERROR_DEVICE_NOT_CONNECTED;
 
-uint64 __fastcall XboxInput_XamInputGetCapabilitiesEx(uint64 ip, cpu::CpuRegs& regs)
-{
-	auto tmp = (uint32)regs.R3;
-	auto user = (uint32)regs.R4;
-	auto flags = (uint32)regs.R5;
-	auto capsPtr = (void*)(uint32)regs.R6;
+			if ((userIndex & 0xFF) == 0xFF || (flags & XINPUT_FLAG_ANY_USER))
+				userIndex = 0;
 
-	GLog.Log("XamInputGetCapabilitiesEx(%d, %d, %.8X, %.8X)", tmp, user, flags, capsPtr);
+			return GPlatform.GetInputSystem().GetCapabilities(userIndex, flags, outCapsPtr.GetNativePointer());
+		}
 
-	if (!capsPtr)
-		RETURN_ARG(xnative::X_ERROR_BAD_ARGUMENTS);
+		X_STATUS Xbox_XamInputGetCapabilitiesEx(uint32 tempIndex, uint32 userIndex, uint32 flags, Pointer<X_INPUT_CAPABILITIES> outCapsPtr)
+		{
+			if (!outCapsPtr.IsValid())
+				return X_ERROR_BAD_ARGUMENTS;
 
-	if ((flags & 0xFF) && (flags & XINPUT_FLAG_GAMEPAD) == 0)
-		RETURN_ARG(xnative::X_ERROR_DEVICE_NOT_CONNECTED);
+			if ((flags & 0xFF) && (flags & XINPUT_FLAG_GAMEPAD) == 0)
+				return X_ERROR_DEVICE_NOT_CONNECTED;
 
-	if ((user & 0xFF) == 0xFF || (flags & XINPUT_FLAG_ANY_USER))
-		user = 0;
+			if ((userIndex & 0xFF) == 0xFF || (flags & XINPUT_FLAG_ANY_USER))
+				userIndex = 0;
 
-	auto* caps = (xnative::X_INPUT_CAPABILITIES*)capsPtr;
-	const auto ret = GPlatform.GetInputSystem().GetCapabilities(user, flags, caps);
-	RETURN_ARG(ret);
-}
+			return GPlatform.GetInputSystem().GetCapabilities(userIndex, flags, outCapsPtr.GetNativePointer());
+		}
 
-uint64 __fastcall XboxInput_XamInputSetState(uint64 ip, cpu::CpuRegs& regs)
-{
-	auto user = (uint32)regs.R3;
-	auto unk = (uint32)regs.R4;
-	auto* ptr = (xnative::X_INPUT_VIBRATION*)(uint32)regs.R5;
+		X_STATUS Xbox_XamInputSetState(uint32 userIndex, uint32, Pointer<X_INPUT_VIBRATION> statePtr)
+		{
+			if (!statePtr.IsValid())
+				return X_ERROR_BAD_ARGUMENTS;
 
-	GLog.Log("XamInputSetState(%d, %.8X, %.8X)", user, unk, ptr);
+			if ((userIndex & 0xFF) == 0xFF)
+				userIndex = 0;
 
-	if (!ptr)
-		RETURN_ARG(xnative::X_ERROR_BAD_ARGUMENTS);
+			return GPlatform.GetInputSystem().SetState(userIndex, statePtr.GetNativePointer());
+		}
 
-	if ((user & 0xFF) == 0xFF)
-		user = 0;
+		// http://ffplay360.googlecode.com/svn/Test/Common/AtgXime.cpp
+		X_STATUS Xbox_XamInputGetKeystroke(uint32 userIndex, uint32 flags, Pointer<X_INPUT_KEYSTROKE> outKeystrokePtr)
+		{
+			if (!outKeystrokePtr.IsValid())
+				return X_ERROR_BAD_ARGUMENTS;
 
-	auto ret = GPlatform.GetInputSystem().SetState(user, ptr);
-	RETURN_ARG(ret);
-}
+			if ((flags & 0xFF) && (flags & XINPUT_FLAG_GAMEPAD) == 0)
+				return X_ERROR_DEVICE_NOT_CONNECTED;
 
-// http://ffplay360.googlecode.com/svn/Test/Common/AtgXime.cpp
-uint64 __fastcall XboxInput_XamInputGetKeystroke(uint64 ip, cpu::CpuRegs& regs)
-{
-	auto user = (uint32)regs.R3;
-	auto flags = (uint32)regs.R4;
-	auto* ptr = (xnative::X_INPUT_KEYSTROKE*)(uint32)regs.R5;
+			if ((userIndex & 0xFF) == 0xFF || (flags & XINPUT_FLAG_ANY_USER))
+				userIndex = 0;
 
-	GLog.Log("XamInputGetKeystroke(%d, %.8X, %.8X)", user, flags, ptr);
+			return GPlatform.GetInputSystem().GetKeystroke(userIndex, flags, outKeystrokePtr.GetNativePointer());
+		}
 
-	if (!ptr)
-		RETURN_ARG(xnative::X_ERROR_BAD_ARGUMENTS);
+		// http://ffplay360.googlecode.com/svn/Test/Common/AtgXime.cpp
+		X_STATUS Xbox_XamInputGetKeystrokeEx(Pointer<uint32> userIndexPointer, uint32 flags, Pointer<X_INPUT_KEYSTROKE> outKeystrokePtr)
+		{
+			if (!userIndexPointer.IsValid())
+				return X_ERROR_BAD_ARGUMENTS;
 
-	if ((flags & 0xFF) && (flags & XINPUT_FLAG_GAMEPAD) == 0)
-		RETURN_ARG(xnative::X_ERROR_DEVICE_NOT_CONNECTED);
+			auto userIndex = *userIndexPointer;
+			return Xbox_XamInputGetKeystroke(userIndex, flags, outKeystrokePtr);
+		}
+			
+		//---------------------------------------------------------------------------
 
-	if ((user & 0xFF) == 0xFF || (flags & XINPUT_FLAG_ANY_USER))
-		user = 0;
+		void RegisterXboxInput(runtime::Symbols& symbols)
+		{
+			REGISTER(XamUserGetDeviceContext);
+			REGISTER(XamInputGetState);
+			REGISTER(XamInputSetState);
+			REGISTER(XamInputGetCapabilities);
+			REGISTER(XamInputGetCapabilitiesEx);
+			REGISTER(XamResetInactivity);
+			REGISTER(XamEnableInactivityProcessing);
+			REGISTER(XamInputGetKeystroke);
+			REGISTER(XamInputGetKeystrokeEx);
+		}
 
-	auto ret = GPlatform.GetInputSystem().GetKeystroke(user, flags, ptr);
-	RETURN_ARG(ret);
-}
-
-// http://ffplay360.googlecode.com/svn/Test/Common/AtgXime.cpp
-uint64 __fastcall XboxInput_XamInputGetKeystrokeEx(uint64 ip, cpu::CpuRegs& regs)
-{
-	auto user = cpu::mem::loadAddr<uint32>((uint32)regs.R3);
-	auto flags = (uint32)regs.R4;
-	auto* ptr = (xnative::X_INPUT_KEYSTROKE*)regs.R5;
-
-	GLog.Log("XamInputGetKeystroke(%d, %.8X, %.8X)", user, flags, ptr);
-
-	if (!ptr)
-		RETURN_ARG(xnative::X_ERROR_BAD_ARGUMENTS);
-
-	if ((flags & 0xFF) && (flags & XINPUT_FLAG_GAMEPAD) == 0)
-		RETURN_ARG(xnative::X_ERROR_DEVICE_NOT_CONNECTED);
-
-	if ((user & 0xFF) == 0xFF || (flags & XINPUT_FLAG_ANY_USER))
-		user = 0;
-
-	auto ret = GPlatform.GetInputSystem().GetKeystroke(user, flags, ptr);
-	RETURN_ARG(ret);
-}
-
-//---------------------------------------------------------------------------
-
-void RegisterXboxInput(runtime::Symbols& symbols)
-{
-#define REGISTER(x) symbols.RegisterFunction(#x, (runtime::TBlockFunc) &XboxInput_##x);
-	REGISTER(XamUserGetDeviceContext);
-	REGISTER(XamInputGetState);
-	REGISTER(XamInputSetState);
-	REGISTER(XamInputGetCapabilities);
-	REGISTER(XamInputGetCapabilitiesEx);
-	REGISTER(XamResetInactivity);
-	REGISTER(XamEnableInactivityProcessing);
-	REGISTER(XamInputGetKeystroke);
-	REGISTER(XamInputGetKeystrokeEx);
-#undef REGISTER
-}
+	} // lib
+} // xenon

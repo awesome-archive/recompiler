@@ -9,7 +9,7 @@ namespace platform
 
 	//---------------------------------------------------------------------------
 
-	CPURegister::CPURegister(const char* name, const uint32 bitSize, const uint32 bitOffset, const EInstructionRegisterType itype, const CPURegister* parent, const int nativeIndex)
+	CPURegister::CPURegister(const char* name, const uint32 bitSize, const uint32 bitOffset, const CPURegisterType itype, const CPURegister* parent, const int nativeIndex)
 		: m_bitSize( bitSize )
 		, m_bitOffset( bitOffset )
 		, m_type( itype )
@@ -188,7 +188,7 @@ namespace platform
 		return instr;
 	}
 
-	const CPURegister* CPU::AddRootRegister(const char* name, const int nativeIndex, const uint32 bitSize, const EInstructionRegisterType type)
+	const CPURegister* CPU::AddRootRegister(const char* name, const int nativeIndex, const uint32 bitSize, const CPURegisterType type)
 	{
 		// invalid name
 		if (!name || !name[0])
@@ -201,11 +201,12 @@ namespace platform
 		// create register
 		CPURegister* regInfo = new CPURegister(name, bitSize, 0, type, nullptr, nativeIndex);
 		m_registers.push_back(regInfo);
+		m_rootRegisters.push_back(regInfo);
 		m_registerMap[name] = regInfo;
 		return regInfo;
 	}
 
-	const CPURegister* CPU::AddChildRegister(const char* parentName, const char* name, const int nativeIndex, const uint32 bitSize, const uint32 bitOffset, const EInstructionRegisterType type)
+	const CPURegister* CPU::AddChildRegister(const char* parentName, const char* name, const int nativeIndex, const uint32 bitSize, const uint32 bitOffset, const CPURegisterType type)
 	{
 		// invalid name
 		if (!name || !name[0])

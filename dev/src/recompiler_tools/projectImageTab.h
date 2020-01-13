@@ -1,6 +1,7 @@
 #pragma once
 
 #include "projectWindow.h"
+#include "projectMemoryView.h"
 
 namespace tools
 {
@@ -8,7 +9,7 @@ namespace tools
 	class ImageMemoryView;
 
 	/// tab for the image
-	class ProjectImageTab : public ProjectTab
+	class ProjectImageTab : public ProjectTab, public INavigationHelper
 	{
 		DECLARE_EVENT_TABLE();
 
@@ -19,14 +20,11 @@ namespace tools
 		// get the image
 		inline const std::shared_ptr<ProjectImage>& GetImage() const { return m_image; }
 
-		// navigate to previous address from the address history
-		bool NavigateBack();
-
-		// navigate to next address in the address history
-		bool NavigateForward();
+		// general navigation
+		virtual bool Navigate(const NavigationType type) override;
 
 		// navigate to address in this image
-		bool NavigateToAddress(const uint64 address, const bool addToHistory);
+		virtual bool NavigateToCodeAddress(const uint64 address, const bool addToHistory) override;
 
 	private:
 		std::shared_ptr<ProjectImage> m_image;
@@ -51,6 +49,7 @@ namespace tools
 		void RefreshSymbolList();
 		void RefreshFunctionList();
 
+		void OnFindSymbol(wxCommandEvent& evt);
 		void OnSelectSection(wxCommandEvent& evt);
 		void OnGotoAddress(wxCommandEvent& evt);
 		void OnGotoEntryAddress(wxCommandEvent& evt);
@@ -69,6 +68,9 @@ namespace tools
 		void OnSelectFunction(wxListEvent& evt);
 		void OnRefreshFunctionList(wxCommandEvent& evt);
 		void OnBuildCode(wxCommandEvent& evt);
+
+		virtual std::shared_ptr<ProjectImage> GetCurrentImage() override;
+		virtual MemoryView* GetCurrentMemoryView() override;
 	};
 
 } // tool

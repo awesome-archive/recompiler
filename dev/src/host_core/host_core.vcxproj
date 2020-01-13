@@ -77,12 +77,16 @@
     </ClCompile>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="bitset.cpp" />
+    <ClCompile Include="blockAllocator.cpp" />
     <ClCompile Include="launcherCommandline.cpp" />
     <ClCompile Include="launcherUtils.cpp" />
     <ClCompile Include="native.cpp" />
     <ClCompile Include="networkAddress.cpp" />
     <ClCompile Include="networkManagerImpl.cpp" />
     <ClCompile Include="networkSocket.cpp" />
+    <ClInclude Include="bitset.h" />
+    <ClInclude Include="blockAllocator.h" />
     <ClInclude Include="debugPacket.h" />
     <ClCompile Include="runtimeCodeExecutor.cpp" />
     <ClCompile Include="runtimeCodeTable.cpp" />
@@ -98,6 +102,7 @@
     </ClCompile>
     <ClCompile Include="launcherOutputTTY.cpp" />
     <ClCompile Include="runtimeSymbols.cpp" />
+    <ClCompile Include="runtimeTraceFile.cpp" />
     <ClCompile Include="runtimeTraceWriter.cpp" />
     <ClCompile Include="zlib\adler32.c">
       <PrecompiledHeader>NotUsing</PrecompiledHeader>
@@ -158,6 +163,7 @@
     <ClInclude Include="build.h" />
     <ClInclude Include="launcherOutputTTY.h" />
     <ClInclude Include="runtimeSymbols.h" />
+    <ClInclude Include="runtimeTraceFile.h" />
     <ClInclude Include="runtimeTraceWriter.h" />
     <ClInclude Include="zlib\crc32.h" />
     <ClInclude Include="zlib\deflate.h" />

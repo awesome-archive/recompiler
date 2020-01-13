@@ -10,6 +10,11 @@ namespace xenon
 	class FileSystem;
 	class Graphics;
 	class InputSystem;
+	class Memory;
+	class UserProfileManager;
+	class Audio;
+	class TraceFile;
+	class TimeBase;
 
 	/// Top level wrapper
 	class Platform : public runtime::IPlatform
@@ -21,13 +26,21 @@ namespace xenon
 
 		inline Graphics& GetGraphics() { return *m_graphics; }
 
-		inline native::IMemory& GetMemory() { return *m_memory;  }
+		inline Memory& GetMemory() { return *m_memory;  }
 
 		inline InputSystem& GetInputSystem() const { return *m_inputSys; }
 
 		inline cpu::Interrupts& GetInterruptTable() const { return *m_interruptTable; }
 
 		inline cpu::GeneralIO& GetIOTable() const { return *m_ioTable; }
+
+		inline UserProfileManager& GetUserProfileManager() const { return *m_users; }
+
+		inline Audio& GetAudio() const { return *m_audio; }
+
+		inline TimeBase& GetTimeBase() const { return *m_timeBase; }
+
+		inline runtime::TraceFile* GetTraceFile() const { return m_traceFile; }
 
 	public:
 		Platform();
@@ -52,6 +65,9 @@ namespace xenon
 		//---
 
 		void RequestUserExit();
+		void DebugTrace(const char* txt);
+
+		void RaiseIRQL();
 
 	private:
 		// subsystems
@@ -59,28 +75,54 @@ namespace xenon
 		FileSystem*				m_fileSys;		// file system
 		Graphics*				m_graphics;		// graphics subsystem
 		InputSystem*			m_inputSys;		// input system
-
-		// native
-		native::IMemory*		m_memory;		// native memory system
+		Memory*					m_memory;		// memory system
+		UserProfileManager*		m_users;		// user profiles
+		Audio*					m_audio;		// audio system
+		TimeBase*				m_timeBase;		// timer and stuff
 
 		// some runtime data
-		xnative::XenonNativeData	m_nativeXexExecutableModuleHandle;
-		xnative::XenonNativeData	m_nativeKeDebugMonitorData;
-		xnative::XenonNativeData	m_nativeKeCertMonitorData;
-		xnative::XenonNativeData	m_nativeXboxHardwareInfo;
-		xnative::XenonNativeData	m_nativeXexExecutableModuleHandlePtr;
-		xnative::XenonNativeData	m_nativeExLoadedCommandLine;
-		xnative::XenonNativeData	m_nativeXboxKrnlVersion;
-		xnative::XenonNativeData	m_nativeKeTimeStampBundle;
-		xnative::XenonNativeData	m_nativeExThreadObjectType;
+		lib::XenonNativeData	m_nativeXexExecutableModuleHandle;
+		lib::XenonNativeData	m_nativeKeDebugMonitorData;
+		lib::XenonNativeData	m_nativeKeCertMonitorData;
+		lib::XenonNativeData	m_nativeXboxHardwareInfo;
+		lib::XenonNativeData	m_nativeXexExecutableModuleHandlePtr;
+		lib::XenonNativeData	m_nativeExLoadedCommandLine;
+		lib::XenonNativeData	m_nativeXboxKrnlVersion;
+		lib::XenonNativeData	m_nativeKeTimeStampBundle;
+		lib::XenonNativeData	m_nativeExThreadObjectType;
 
 		// interrupt table
 		cpu::Interrupts*	m_interruptTable;
 		cpu::GeneralIO*		m_ioTable;
 
+		// trace file (may be null)
+		runtime::TraceFile*		m_traceFile;
+
+		// irq levels
+
+		// output log file
+		std::ofstream m_platformLogFile;
+		bool m_platformLogFileEnabled;
+
 		// external exit
 		bool m_userExitRequested;
 	};
+
+	//---------------------------------------------------------------------------
+
+	// bind trace for for memory tagging
+	// NOTE: writer is per-thead 
+	extern runtime::TraceWriter* BindMemoryTraceWriter(runtime::TraceWriter* writer);
+
+	// create IRQ/APC memory writer
+	extern void CreateSystemTraceMemoryWriter();
+
+	// tag a memory write, places information about the write in the trace file for current thread
+	extern void TagMemoryWrite(const uint64 addr, const uint32 size, const char* txt, ...);
+	extern void TagMemoryWrite(const void* ptr, const uint32 size, const char* txt, ...);
+
+	//---------------------------------------------------------------------------
+
 
 } // xenon
 
@@ -89,3 +131,6 @@ namespace xenon
 extern xenon::Platform GPlatform;
 
 //---------------------------------------------------------------------------
+
+#define TAG_MEMORY_WRITE_PTR(data, size) xenon::TagMemoryWrite((uint64)data, size, __FUNCTION__);
+#define TAG_MEMORY_WRITE_ADDR(addr, size) xenon::TagMemoryWrite(addr, size, __FUNCTION__);

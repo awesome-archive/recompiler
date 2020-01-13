@@ -124,6 +124,14 @@ private:
 	// internal state cache
 	CDX11StateCache*			m_stateCache;
 
+	// hack flags set when the color render target is using MSAA (which we don't support directly)
+	XenonMsaaSamples			m_colorMSAA[4];
+	XenonMsaaSamples			m_depthMSAA;
+
+	// hacks - pixel/vertex shader hashes
+	uint32						m_pixelShaderHash;
+	uint32						m_vertexShaderHash;
+
 	struct ModeInfo
 	{
 		uint32					m_width;
@@ -198,4 +206,7 @@ private:
 
 	// create swapchain 
 	bool CreateSwapchain();
+
+	// handle hacky clear
+	bool HACK_ClearFromDraw(const CXenonGPURegisters& regs, IXenonGPUDumpWriter* traceDump, const CXenonGPUState::DrawIndexState& ds);
 };

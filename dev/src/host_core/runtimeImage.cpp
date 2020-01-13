@@ -28,6 +28,7 @@ namespace runtime
 	uint64 __fastcall UnimplementedFunctionBlock(uint64 ip, RegisterBank& regs)
 	{
 		GLog.Err("Code: Unimplemented function at IP=%06Xh reached", ip);
+		DEBUG_CHECK(!"Please write the stub :)");
 		return 0;
 	}
 
@@ -91,7 +92,7 @@ namespace runtime
 		}
 
 		// determine range of valid code
-		uint64 minCodeAddress = imageInfo->m_entryAddress;
+		uint64 minCodeAddress = imageInfo->m_imageLoadAddress;
 		uint64 maxCodeAddress = imageInfo->m_entryAddress;
 		for (uint32 i = 0; i < imageInfo->m_numBlocks; ++i)
 		{
@@ -144,6 +145,12 @@ namespace runtime
 		return true;
 	}
 
+	uint64 __fastcall ImageImportExecutor(uint64 ip, RegisterBank& regs)
+	{
+		const auto* functionPointer = *(const TSystemFunction**)(ip);
+		return (*functionPointer)(ip, regs);
+	}
+
 	bool Image::Bind(const Symbols& symbols)
 	{
 		bool status = true;
@@ -162,19 +169,23 @@ namespace runtime
 			if (importInfo.m_type == 1)
 			{
 				// find function code prototype
-				runtime::TBlockFunc importCode = symbols.FindFunctionCode(importInfo.m_name);
+				const auto* importCode = symbols.FindFunction(importInfo.m_name);
 				if (!importCode)
 				{
 					numUnknownFunctions += 1;
-					GLog.Warn("Image: Unimplemented import function '%s'. Crash possible.", importInfo.m_name);
+					GLog.Warn("Image: Unimplemented import function '%s' at 0x%08X. Crash possible.", importInfo.m_name, importInfo.m_address);
 
 					// mount unimplemented functio0n
 					m_codeTable->MountBlock(importInfo.m_address, 4, &UnimplementedFunctionBlock, true);
 					continue;
 				}
 
+				// write the pointer to the import function implementation right into the image data
+				// this is usually occupied by a "jmp", since we are handling the execution ouselves we can store whatever we want there
+				*((const TSystemFunction**)(uint64_t)importInfo.m_address) = importCode;
+
 				// bind to code table
-				if (m_codeTable->MountBlock(importInfo.m_address, 4, importCode, true))
+				if (m_codeTable->MountBlock(importInfo.m_address, 4, &ImageImportExecutor, true))
 				{
 					numImportedFunctions += 1;
 				}

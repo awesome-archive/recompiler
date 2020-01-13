@@ -156,7 +156,7 @@ static const char* GetBranchTypeName(const decoding::Instruction& instr, const c
 	return buf;
 }
 
-static bool GenerateBranchInfo(const decoding::Instruction& instr, const uint32 codeAddress, char* outInfoCode, const uint32 outInfoSize)
+static bool GenerateBranchInfo(const decoding::Instruction& instr, const uint64 codeAddress, char* outInfoCode, const uint32 outInfoSize)
 {
 	// invalid branch type
 	if ( instr.GetArg0().m_type != decoding::Instruction::eType_Imm )
@@ -170,8 +170,8 @@ static bool GenerateBranchInfo(const decoding::Instruction& instr, const uint32 
 			isAbsoluteAddress = true;
 
 		// format shortened branch instruction
-		const uint32 targetAddress = isAbsoluteAddress ? instr.GetArg0().m_imm : (codeAddress + instr.GetArg0().m_imm);
-		sprintf_s(outInfoCode, outInfoSize, "%s <:L%06Xh>", instr.GetOpcode()->GetName(), targetAddress );
+		const auto targetAddress = isAbsoluteAddress ? instr.GetArg0().m_imm : (codeAddress + instr.GetArg0().m_imm);
+		sprintf_s(outInfoCode, outInfoSize, "%s <:L%06llXh>", instr.GetOpcode()->GetName(), targetAddress );
 		return true;
 	}
 
@@ -212,9 +212,9 @@ static bool GenerateBranchInfo(const decoding::Instruction& instr, const uint32 
 		if ( instr.GetArg2().m_type != decoding::Instruction::eType_Imm )
 			return false;
 
-		const uint32 targetAddress = codeAddress + instr.GetArg2().m_imm;
+		const auto targetAddress = codeAddress + instr.GetArg2().m_imm;
 		//sprintf_s(outInfoCode, outInfoSize, "(b%d) %s, <:L%06Xh>", instr.GetArg0().m_imm, branchCode, targetAddress );
-		sprintf_s(outInfoCode, outInfoSize, "%s, <:L%06Xh>", branchCode, targetAddress );
+		sprintf_s(outInfoCode, outInfoSize, "%s, <:L%06llXh>", branchCode, targetAddress);
 	}
 	else
 	{
@@ -224,12 +224,12 @@ static bool GenerateBranchInfo(const decoding::Instruction& instr, const uint32 
 	return true;
 }
 
-bool IInstructiondDecompilerXenon::GetExtendedText(const class decoding::Instruction& instr, const uint32 codeAddress, char* outText, const uint32 outTextSize) const
+bool IInstructiondDecompilerXenon::GetExtendedText(const class decoding::Instruction& instr, const uint64 codeAddress, char* outText, const uint32 outTextSize) const
 {
 	return false; // no special info
 }
 
-bool IInstructiondDecompilerXenon::GetCommentText(const class decoding::Instruction& instr, const uint32 codeAddress, char* outText, const uint32 outTextSize) const
+bool IInstructiondDecompilerXenon::GetCommentText(const class decoding::Instruction& instr, const uint64 codeAddress, char* outText, const uint32 outTextSize) const
 {
 	return false; // no special comment
 }
@@ -280,7 +280,7 @@ public:
 	CInstructiondDecoderXenon_NOP()
 	{}
 
-	virtual bool GetExtendedInfo(const class decoding::Instruction& op, const uint32 codeAddress, const decoding::Context& context, class decoding::InstructionExtendedInfo& outInfo) const override
+	virtual bool GetExtendedInfo(const class decoding::Instruction& op, const uint64 codeAddress, const decoding::Context& context, class decoding::InstructionExtendedInfo& outInfo) const override
 	{
 		if (!CheckArgs(op))
 			return ErrInvalidArgs(op);
@@ -305,7 +305,7 @@ public:
 	CInstructiondDecoderXenon_MR()
 	{}
 
-	virtual bool GetExtendedInfo(const class decoding::Instruction& op, const uint32 codeAddress, const decoding::Context& context, class decoding::InstructionExtendedInfo& outInfo) const override
+	virtual bool GetExtendedInfo(const class decoding::Instruction& op, const uint64 codeAddress, const decoding::Context& context, class decoding::InstructionExtendedInfo& outInfo) const override
 	{
 		if (!CheckArgs(op, REG, REG))
 			return ErrInvalidArgs(op);
@@ -507,7 +507,7 @@ template< const uint32 BitSize, const bool UpdateAddress, EMemoryType type >
 class CInstructiondDecoderXenon_MEM_LOAD : public IInstructiondDecompilerXenon
 {
 public:
-	virtual bool GetExtendedInfo(const class decoding::Instruction& op, const uint32 codeAddress, const decoding::Context& context, class decoding::InstructionExtendedInfo& outInfo) const override
+	virtual bool GetExtendedInfo(const class decoding::Instruction& op, const uint64 codeAddress, const decoding::Context& context, class decoding::InstructionExtendedInfo& outInfo) const override
 	{
 		// first operand is always a register
 		if (!CheckArgs(op, REG, MREG))
@@ -639,7 +639,7 @@ template< const uint32 BitSize, const bool UpdateAddress, EMemoryType type >
 class CInstructiondDecoderXenon_MEM_STORE : public IInstructiondDecompilerXenon
 {
 public:
-	virtual bool GetExtendedInfo(const class decoding::Instruction& op, const uint32 codeAddress, const decoding::Context& context, class decoding::InstructionExtendedInfo& outInfo) const override
+	virtual bool GetExtendedInfo(const class decoding::Instruction& op, const uint64 codeAddress, const decoding::Context& context, class decoding::InstructionExtendedInfo& outInfo) const override
 	{
 		// first operand is always a register
 		if (!CheckArgs(op, REG, MREG))
@@ -764,12 +764,37 @@ public:
 	}
 };
 
+class CInstructiondDecoderXenon_MEM_STORE_LVX : public CInstructiondDecoderXenon_MEM_STORE<128, false, EMemoryType::eMemoryType_VMLX>
+{
+public:
+	virtual bool GetExtendedInfo(const class decoding::Instruction& op, const uint64 codeAddress, const decoding::Context& context, class decoding::InstructionExtendedInfo& outInfo) const override
+	{
+		if (!CInstructiondDecoderXenon_MEM_STORE<128, false, EMemoryType::eMemoryType_VMLX>::GetExtendedInfo(op, codeAddress, context, outInfo))
+			return false;
+		outInfo.m_memoryWriteMode = decoding::InstructionExtendedInfo::eMemoryWriteMode_LeftAligned;
+		return true;
+	}
+
+};
+
+class CInstructiondDecoderXenon_MEM_STORE_RVX : public CInstructiondDecoderXenon_MEM_STORE<128, false, EMemoryType::eMemoryType_VMRX>
+{
+public:
+	virtual bool GetExtendedInfo(const class decoding::Instruction& op, const uint64 codeAddress, const decoding::Context& context, class decoding::InstructionExtendedInfo& outInfo) const override
+	{
+		if (!CInstructiondDecoderXenon_MEM_STORE<128, false, EMemoryType::eMemoryType_VMRX>::GetExtendedInfo(op, codeAddress, context, outInfo))
+			return false;
+		outInfo.m_memoryWriteMode = decoding::InstructionExtendedInfo::eMemoryWriteMode_RightAligned;
+		return true;
+	}
+};
+
 //---------------------------------------------------------------------------
 
 class CInstructiondDecoderXenon_DCBZ : public IInstructiondDecompilerXenon
 {
 public:
-	virtual bool GetExtendedInfo(const class decoding::Instruction& op, const uint32 codeAddress, const decoding::Context& context, class decoding::InstructionExtendedInfo& outInfo) const override
+	virtual bool GetExtendedInfo(const class decoding::Instruction& op, const uint64 codeAddress, const decoding::Context& context, class decoding::InstructionExtendedInfo& outInfo) const override
 	{
 		// first operand is always a register
 		if (!CheckArgs(op, MREG))
@@ -881,7 +906,7 @@ public:
 		return false;
 	}
 
-	virtual bool GetCommentText(const class decoding::Instruction& instr, const uint32 codeAddress, char* outText, const uint32 outTextSize) const
+	virtual bool GetCommentText(const class decoding::Instruction& instr, const uint64 codeAddress, char* outText, const uint32 outTextSize) const
 	{
 		outText[0] = 0;
 
@@ -902,7 +927,7 @@ public:
 		return result;
 	}
 
-	virtual bool GetExtendedInfo(const class decoding::Instruction& op, const uint32 codeAddress, const decoding::Context& context, class decoding::InstructionExtendedInfo& outInfo) const override
+	virtual bool GetExtendedInfo(const class decoding::Instruction& op, const uint64 codeAddress, const decoding::Context& context, class decoding::InstructionExtendedInfo& outInfo) const override
 	{
 		// first operand is always a register
 		if (!CheckArgs(op, arg0, arg1, arg2, arg3, arg4, arg5))
@@ -1091,7 +1116,7 @@ public:
 	CInstructiondDecoderXenon_B()
 	{}
 
-	virtual bool GetExtendedInfo(const class decoding::Instruction& op, const uint32 codeAddress, const decoding::Context& context, class decoding::InstructionExtendedInfo& outInfo) const override
+	virtual bool GetExtendedInfo(const class decoding::Instruction& op, const uint64 codeAddress, const decoding::Context& context, class decoding::InstructionExtendedInfo& outInfo) const override
 	{
 		if (!CheckArgs(op, IMM))
 			return ErrInvalidArgs(op);
@@ -1099,6 +1124,7 @@ public:
 		outInfo.m_codeFlags |= decoding::InstructionExtendedInfo::eInstructionFlag_Jump;
 		outInfo.m_codeFlags |= decoding::InstructionExtendedInfo::eInstructionFlag_Static;
 		outInfo.m_branchTargetAddress = Absolute ? op.GetArg0().m_imm : (codeAddress + op.GetArg0().m_imm);
+		outInfo.m_branchTargetAddress &= 0xFFFFFFFFU;
 
 		return true;
 	}
@@ -1123,7 +1149,7 @@ public:
 	CInstructiondDecoderXenon_BL()
 	{}
 
-	virtual bool GetExtendedInfo(const class decoding::Instruction& op, const uint32 codeAddress, const decoding::Context& context, class decoding::InstructionExtendedInfo& outInfo) const override
+	virtual bool GetExtendedInfo(const class decoding::Instruction& op, const uint64 codeAddress, const decoding::Context& context, class decoding::InstructionExtendedInfo& outInfo) const override
 	{
 		if (!CheckArgs(op, IMM))
 			return ErrInvalidArgs(op);
@@ -1134,6 +1160,7 @@ public:
 		outInfo.m_codeFlags |= decoding::InstructionExtendedInfo::eInstructionFlag_Call;
 		outInfo.m_codeFlags |= decoding::InstructionExtendedInfo::eInstructionFlag_Static;
 		outInfo.m_branchTargetAddress = Absolute ? op.GetArg0().m_imm : (codeAddress + op.GetArg0().m_imm);
+		outInfo.m_branchTargetAddress &= 0xFFFFFFFFU;
 		return true;
 	}
 
@@ -1157,7 +1184,7 @@ public:
 	CInstructiondDecoderXenon_CMP()
 	{}
 
-	virtual bool GetExtendedInfo(const class decoding::Instruction& op, const uint32 codeAddress, const decoding::Context& context, class decoding::InstructionExtendedInfo& outInfo) const override
+	virtual bool GetExtendedInfo(const class decoding::Instruction& op, const uint64 codeAddress, const decoding::Context& context, class decoding::InstructionExtendedInfo& outInfo) const override
 	{
 		if (CheckArgs(op, REG, REG, IMM))
 		{
@@ -1224,7 +1251,7 @@ public:
 	CInstructiondDecoderXenon_FCMP()
 	{}
 
-	virtual bool GetExtendedInfo(const class decoding::Instruction& op, const uint32 codeAddress, const decoding::Context& context, class decoding::InstructionExtendedInfo& outInfo) const override
+	virtual bool GetExtendedInfo(const class decoding::Instruction& op, const uint64 codeAddress, const decoding::Context& context, class decoding::InstructionExtendedInfo& outInfo) const override
 	{
 		if (CheckArgs(op, REG, REG, REG))
 		{
@@ -1269,7 +1296,7 @@ public:
 	CInstructiondDecoderXenon_TRAP()
 	{}
 
-	virtual bool GetExtendedInfo(const class decoding::Instruction& op, const uint32 codeAddress, const decoding::Context& context, class decoding::InstructionExtendedInfo& outInfo) const override
+	virtual bool GetExtendedInfo(const class decoding::Instruction& op, const uint64 codeAddress, const decoding::Context& context, class decoding::InstructionExtendedInfo& outInfo) const override
 	{
 		if (!CheckArgs(op, IMM, REG, IMM))
 			return ErrInvalidArgs(op);
@@ -1316,7 +1343,7 @@ public:
 	CInstructiondDecoderXenon_TRAP_REG()
 	{}
 
-	virtual bool GetExtendedInfo(const class decoding::Instruction& op, const uint32 codeAddress, const decoding::Context& context, class decoding::InstructionExtendedInfo& outInfo) const override
+	virtual bool GetExtendedInfo(const class decoding::Instruction& op, const uint64 codeAddress, const decoding::Context& context, class decoding::InstructionExtendedInfo& outInfo) const override
 	{
 		if (!CheckArgs(op, IMM, REG, REG))
 			return ErrInvalidArgs(op);
@@ -1418,7 +1445,7 @@ public:
 	CInstructiondDecoderXenon_BC()
 	{}
 
-	virtual bool GetExtendedText(const class decoding::Instruction& instr, const uint32 codeAddress, char* outText, const uint32 outTextSize) const
+	virtual bool GetExtendedText(const class decoding::Instruction& instr, const uint64 codeAddress, char* outText, const uint32 outTextSize) const
 	{
 		// get the branch code
 		if (GenerateBranchInfo(instr, codeAddress, outText, outTextSize))
@@ -1428,7 +1455,7 @@ public:
 		return false;
 	}
 
-	virtual bool GetExtendedInfo(const class decoding::Instruction& op, const uint32 codeAddress, const decoding::Context& context, class decoding::InstructionExtendedInfo& outInfo) const override
+	virtual bool GetExtendedInfo(const class decoding::Instruction& op, const uint64 codeAddress, const decoding::Context& context, class decoding::InstructionExtendedInfo& outInfo) const override
 	{
 		if (!CheckArgs(op, IMM, REG, IMM))
 			return ErrInvalidArgs(op);
@@ -1472,6 +1499,7 @@ public:
 
 		// compute branch target
 		outInfo.m_branchTargetAddress = A ? op.GetArg2().m_imm : (codeAddress + op.GetArg2().m_imm);
+		outInfo.m_branchTargetAddress &= 0xFFFFFFFFU;
 		return true;
 	}
 
@@ -1519,7 +1547,7 @@ public:
 	CInstructiondDecoderXenon_BCLR()
 	{}
 
-	virtual bool GetExtendedText(const class decoding::Instruction& instr, const uint32 codeAddress, char* outText, const uint32 outTextSize) const
+	virtual bool GetExtendedText(const class decoding::Instruction& instr, const uint64 codeAddress, char* outText, const uint32 outTextSize) const
 	{
 		// get the branch code
 		if (GenerateBranchInfo(instr, codeAddress, outText, outTextSize))
@@ -1529,7 +1557,7 @@ public:
 		return false;
 	}
 
-	virtual bool GetExtendedInfo(const class decoding::Instruction& op, const uint32 codeAddress, const decoding::Context& context, class decoding::InstructionExtendedInfo& outInfo) const override
+	virtual bool GetExtendedInfo(const class decoding::Instruction& op, const uint64 codeAddress, const decoding::Context& context, class decoding::InstructionExtendedInfo& outInfo) const override
 	{
 		if (!CheckArgs(op, IMM, REG))
 			return ErrInvalidArgs(op);
@@ -1598,7 +1626,7 @@ public:
 		char branchCode[128];
 		if (L)
 		{
-			sprintf_s(branchCode, sizeof(branchCode), "TReg tempLR = regs.LR; regs.LR = 0x%08X; return (uint32)tempLR;",
+			sprintf_s(branchCode, sizeof(branchCode), "auto tempLR = regs.LR; regs.LR = 0x%08X; return (uint32)tempLR;",
 				address+4 );
 		}
 		else
@@ -1618,7 +1646,7 @@ public:
 	CInstructiondDecoderXenon_BCCTRR()
 	{}
 
-	virtual bool GetExtendedText(const class decoding::Instruction& instr, const uint32 codeAddress, char* outText, const uint32 outTextSize) const
+	virtual bool GetExtendedText(const class decoding::Instruction& instr, const uint64 codeAddress, char* outText, const uint32 outTextSize) const
 	{
 		// get the branch code
 		if (GenerateBranchInfo(instr, codeAddress, outText, outTextSize))
@@ -1628,7 +1656,7 @@ public:
 		return false;
 	}
 
-	virtual bool GetExtendedInfo(const class decoding::Instruction& op, const uint32 codeAddress, const decoding::Context& context, class decoding::InstructionExtendedInfo& outInfo) const override
+	virtual bool GetExtendedInfo(const class decoding::Instruction& op, const uint64 codeAddress, const decoding::Context& context, class decoding::InstructionExtendedInfo& outInfo) const override
 	{
 		if (!CheckArgs(op, IMM, REG))
 			return ErrInvalidArgs(op);
@@ -1711,7 +1739,7 @@ template< uint32 size, uint32 flags >
 class CInstructiondDecoderXenon_SRAI : public IInstructiondDecompilerXenon
 {
 public:
-	virtual bool GetExtendedInfo(const class decoding::Instruction& op, const uint32 codeAddress, const decoding::Context& context, class decoding::InstructionExtendedInfo& outInfo) const override
+	virtual bool GetExtendedInfo(const class decoding::Instruction& op, const uint64 codeAddress, const decoding::Context& context, class decoding::InstructionExtendedInfo& outInfo) const override
 	{
 		if (!CheckArgs(op, REG, REG, IMM))
 			return ErrInvalidArgs(op);
@@ -1754,7 +1782,7 @@ public:
 	CInstructiondDecoderXenon_RL()
 	{}
 
-	virtual bool GetExtendedInfo(const class decoding::Instruction& op, const uint32 codeAddress, const decoding::Context& context, class decoding::InstructionExtendedInfo& outInfo) const override
+	virtual bool GetExtendedInfo(const class decoding::Instruction& op, const uint64 codeAddress, const decoding::Context& context, class decoding::InstructionExtendedInfo& outInfo) const override
 	{
 		if (!CheckArgs(op, REG, REG, REG, IMM, IMM))
 			return ErrInvalidArgs(op);
@@ -1799,7 +1827,7 @@ public:
 	CInstructiondDecoderXenon_RLI()
 	{}
 
-	virtual bool GetExtendedInfo(const class decoding::Instruction& op, const uint32 codeAddress, const decoding::Context& context, class decoding::InstructionExtendedInfo& outInfo) const override
+	virtual bool GetExtendedInfo(const class decoding::Instruction& op, const uint64 codeAddress, const decoding::Context& context, class decoding::InstructionExtendedInfo& outInfo) const override
 	{
 		if (!CheckArgs(op, REG, REG, IMM, IMM))
 			return ErrInvalidArgs(op);
@@ -1841,7 +1869,7 @@ public:
 	CInstructiondDecoderXenon_RLIM()
 	{}
 
-	virtual bool GetExtendedInfo(const class decoding::Instruction& op, const uint32 codeAddress, const decoding::Context& context, class decoding::InstructionExtendedInfo& outInfo) const override
+	virtual bool GetExtendedInfo(const class decoding::Instruction& op, const uint64 codeAddress, const decoding::Context& context, class decoding::InstructionExtendedInfo& outInfo) const override
 	{
 		if (!CheckArgs(op, REG, REG, IMM, IMM, IMM))
 			return ErrInvalidArgs(op);
@@ -1884,7 +1912,7 @@ public:
 	CInstructiondDecoderXenon_RLM()
 	{}
 
-	virtual bool GetExtendedInfo(const class decoding::Instruction& op, const uint32 codeAddress, const decoding::Context& context, class decoding::InstructionExtendedInfo& outInfo) const override
+	virtual bool GetExtendedInfo(const class decoding::Instruction& op, const uint64 codeAddress, const decoding::Context& context, class decoding::InstructionExtendedInfo& outInfo) const override
 	{
 		if (!CheckArgs(op, REG, REG, REG, IMM, IMM))
 			return ErrInvalidArgs(op);
@@ -1934,304 +1962,345 @@ CPU_XenonPPC::CPU_XenonPPC()
 
 	// create registers
 	{
-		//const CPURegister* AddRootRegister(const char* name, const int nativeIndex, const uint32 bitSize, const EInstructionRegisterType type);
-		//const CPURegister* AddChildRegister(const char* parentName, const char* name, const int nativeIndex, const uint32 bitSize, const uint32 bitOffset, const EInstructionRegisterType type);
+		//const CPURegister* AddRootRegister(const char* name, const int nativeIndex, const uint32 bitSize, const CPURegisterType type);
+		//const CPURegister* AddChildRegister(const char* parentName, const char* name, const int nativeIndex, const uint32 bitSize, const uint32 bitOffset, const CPURegisterType type);
 
 		#define ADD_REG( name, bitSize, regType ) m_regMap[eRegister_##name] = AddRootRegister( #name, eRegister_##name, bitSize, regType )
 		#define ADD_CHILD_REG( parent, name, bitSize, bitOffset, regType ) m_regMap[eRegister_##name] = AddChildRegister( #parent, #name, eRegister_##name, bitSize, bitOffset, regType )
 		#undef CR0
 		#undef CR1
 
-		ADD_REG( LR, 32, platform::EInstructionRegisterType::Integer );
-		ADD_REG( CTR, 64, platform::EInstructionRegisterType::Integer );
-		ADD_REG( MSR, 64, platform::EInstructionRegisterType::Flags );
-		ADD_REG( CR, 32, platform::EInstructionRegisterType::Flags );
+		ADD_REG( LR, 32, platform::CPURegisterType::Control );
+		ADD_REG( CTR, 64, platform::CPURegisterType::Control);
+		ADD_REG( MSR, 64, platform::CPURegisterType::Control);
+		ADD_REG( CR, 32, platform::CPURegisterType::Control);
 
-		ADD_CHILD_REG(CR, CR0, 4, 0, platform::EInstructionRegisterType::Flags);
-		ADD_CHILD_REG(CR, CR1, 4, 4, platform::EInstructionRegisterType::Flags);
-		ADD_CHILD_REG(CR, CR2, 4, 8, platform::EInstructionRegisterType::Flags);
-		ADD_CHILD_REG(CR, CR3, 4, 12, platform::EInstructionRegisterType::Flags);
-		ADD_CHILD_REG(CR, CR4, 4, 16, platform::EInstructionRegisterType::Flags);
-		ADD_CHILD_REG(CR, CR5, 4, 20, platform::EInstructionRegisterType::Flags);
-		ADD_CHILD_REG(CR, CR6, 4, 24, platform::EInstructionRegisterType::Flags);
-		ADD_CHILD_REG(CR, CR7, 4, 28, platform::EInstructionRegisterType::Flags);
+		ADD_CHILD_REG(CR, CR0, 4, 0, platform::CPURegisterType::Control);
+		ADD_CHILD_REG(CR, CR1, 4, 4, platform::CPURegisterType::Control);
+		ADD_CHILD_REG(CR, CR2, 4, 8, platform::CPURegisterType::Control);
+		ADD_CHILD_REG(CR, CR3, 4, 12, platform::CPURegisterType::Control);
+		ADD_CHILD_REG(CR, CR4, 4, 16, platform::CPURegisterType::Control);
+		ADD_CHILD_REG(CR, CR5, 4, 20, platform::CPURegisterType::Control);
+		ADD_CHILD_REG(CR, CR6, 4, 24, platform::CPURegisterType::Control);
+		ADD_CHILD_REG(CR, CR7, 4, 28, platform::CPURegisterType::Control);
 
-		ADD_CHILD_REG(CR0, CR0_LT, 1, 0, platform::EInstructionRegisterType::Flags);
-		ADD_CHILD_REG(CR0, CR0_GT, 1, 1, platform::EInstructionRegisterType::Flags);
-		ADD_CHILD_REG(CR0, CR0_EQ, 1, 2, platform::EInstructionRegisterType::Flags);
-		ADD_CHILD_REG(CR0, CR0_SO, 1, 3, platform::EInstructionRegisterType::Flags);
-		ADD_CHILD_REG(CR1, CR1_LT, 1, 0, platform::EInstructionRegisterType::Flags);
-		ADD_CHILD_REG(CR1, CR1_GT, 1, 1, platform::EInstructionRegisterType::Flags);
-		ADD_CHILD_REG(CR1, CR1_EQ, 1, 2, platform::EInstructionRegisterType::Flags);
-		ADD_CHILD_REG(CR1, CR1_SO, 1, 3, platform::EInstructionRegisterType::Flags);
-		ADD_CHILD_REG(CR2, CR2_LT, 1, 0, platform::EInstructionRegisterType::Flags);
-		ADD_CHILD_REG(CR2, CR2_GT, 1, 1, platform::EInstructionRegisterType::Flags);
-		ADD_CHILD_REG(CR2, CR2_EQ, 1, 2, platform::EInstructionRegisterType::Flags);
-		ADD_CHILD_REG(CR2, CR2_SO, 1, 3, platform::EInstructionRegisterType::Flags);
-		ADD_CHILD_REG(CR3, CR3_LT, 1, 0, platform::EInstructionRegisterType::Flags);
-		ADD_CHILD_REG(CR3, CR3_GT, 1, 1, platform::EInstructionRegisterType::Flags);
-		ADD_CHILD_REG(CR3, CR3_EQ, 1, 2, platform::EInstructionRegisterType::Flags);
-		ADD_CHILD_REG(CR3, CR3_SO, 1, 3, platform::EInstructionRegisterType::Flags);
-		ADD_CHILD_REG(CR4, CR4_LT, 1, 0, platform::EInstructionRegisterType::Flags);
-		ADD_CHILD_REG(CR4, CR4_GT, 1, 1, platform::EInstructionRegisterType::Flags);
-		ADD_CHILD_REG(CR4, CR4_EQ, 1, 2, platform::EInstructionRegisterType::Flags);
-		ADD_CHILD_REG(CR4, CR4_SO, 1, 3, platform::EInstructionRegisterType::Flags);
-		ADD_CHILD_REG(CR5, CR5_LT, 1, 0, platform::EInstructionRegisterType::Flags);
-		ADD_CHILD_REG(CR5, CR5_GT, 1, 1, platform::EInstructionRegisterType::Flags);
-		ADD_CHILD_REG(CR5, CR5_EQ, 1, 2, platform::EInstructionRegisterType::Flags);
-		ADD_CHILD_REG(CR5, CR5_SO, 1, 3, platform::EInstructionRegisterType::Flags);
-		ADD_CHILD_REG(CR6, CR6_LT, 1, 0, platform::EInstructionRegisterType::Flags);
-		ADD_CHILD_REG(CR6, CR6_GT, 1, 1, platform::EInstructionRegisterType::Flags);
-		ADD_CHILD_REG(CR6, CR6_EQ, 1, 2, platform::EInstructionRegisterType::Flags);
-		ADD_CHILD_REG(CR6, CR6_SO, 1, 3, platform::EInstructionRegisterType::Flags);
-		ADD_CHILD_REG(CR7, CR7_LT, 1, 0, platform::EInstructionRegisterType::Flags);
-		ADD_CHILD_REG(CR7, CR7_GT, 1, 1, platform::EInstructionRegisterType::Flags);
-		ADD_CHILD_REG(CR7, CR7_EQ, 1, 2, platform::EInstructionRegisterType::Flags);
-		ADD_CHILD_REG(CR7, CR7_SO, 1, 3, platform::EInstructionRegisterType::Flags);
+		ADD_CHILD_REG(CR0, CR0_LT, 1, 0, platform::CPURegisterType::Control);
+		ADD_CHILD_REG(CR0, CR0_GT, 1, 1, platform::CPURegisterType::Control);
+		ADD_CHILD_REG(CR0, CR0_EQ, 1, 2, platform::CPURegisterType::Control);
+		ADD_CHILD_REG(CR0, CR0_SO, 1, 3, platform::CPURegisterType::Control);
+		ADD_CHILD_REG(CR1, CR1_LT, 1, 0, platform::CPURegisterType::Control);
+		ADD_CHILD_REG(CR1, CR1_GT, 1, 1, platform::CPURegisterType::Control);
+		ADD_CHILD_REG(CR1, CR1_EQ, 1, 2, platform::CPURegisterType::Control);
+		ADD_CHILD_REG(CR1, CR1_SO, 1, 3, platform::CPURegisterType::Control);
+		ADD_CHILD_REG(CR2, CR2_LT, 1, 0, platform::CPURegisterType::Control);
+		ADD_CHILD_REG(CR2, CR2_GT, 1, 1, platform::CPURegisterType::Control);
+		ADD_CHILD_REG(CR2, CR2_EQ, 1, 2, platform::CPURegisterType::Control);
+		ADD_CHILD_REG(CR2, CR2_SO, 1, 3, platform::CPURegisterType::Control);
+		ADD_CHILD_REG(CR3, CR3_LT, 1, 0, platform::CPURegisterType::Control);
+		ADD_CHILD_REG(CR3, CR3_GT, 1, 1, platform::CPURegisterType::Control);
+		ADD_CHILD_REG(CR3, CR3_EQ, 1, 2, platform::CPURegisterType::Control);
+		ADD_CHILD_REG(CR3, CR3_SO, 1, 3, platform::CPURegisterType::Control);
+		ADD_CHILD_REG(CR4, CR4_LT, 1, 0, platform::CPURegisterType::Control);
+		ADD_CHILD_REG(CR4, CR4_GT, 1, 1, platform::CPURegisterType::Control);
+		ADD_CHILD_REG(CR4, CR4_EQ, 1, 2, platform::CPURegisterType::Control);
+		ADD_CHILD_REG(CR4, CR4_SO, 1, 3, platform::CPURegisterType::Control);
+		ADD_CHILD_REG(CR5, CR5_LT, 1, 0, platform::CPURegisterType::Control);
+		ADD_CHILD_REG(CR5, CR5_GT, 1, 1, platform::CPURegisterType::Control);
+		ADD_CHILD_REG(CR5, CR5_EQ, 1, 2, platform::CPURegisterType::Control);
+		ADD_CHILD_REG(CR5, CR5_SO, 1, 3, platform::CPURegisterType::Control);
+		ADD_CHILD_REG(CR6, CR6_LT, 1, 0, platform::CPURegisterType::Control);
+		ADD_CHILD_REG(CR6, CR6_GT, 1, 1, platform::CPURegisterType::Control);
+		ADD_CHILD_REG(CR6, CR6_EQ, 1, 2, platform::CPURegisterType::Control);
+		ADD_CHILD_REG(CR6, CR6_SO, 1, 3, platform::CPURegisterType::Control);
+		ADD_CHILD_REG(CR7, CR7_LT, 1, 0, platform::CPURegisterType::Control);
+		ADD_CHILD_REG(CR7, CR7_GT, 1, 1, platform::CPURegisterType::Control);
+		ADD_CHILD_REG(CR7, CR7_EQ, 1, 2, platform::CPURegisterType::Control);
+		ADD_CHILD_REG(CR7, CR7_SO, 1, 3, platform::CPURegisterType::Control);
 
-		ADD_REG( XER, 64, platform::EInstructionRegisterType::Flags );
-		ADD_CHILD_REG( XER, XER_CA, 1, 0, platform::EInstructionRegisterType::Flags );
-		ADD_CHILD_REG( XER, XER_OV, 1, 1, platform::EInstructionRegisterType::Flags );
-		ADD_CHILD_REG( XER, XER_SO, 1, 2, platform::EInstructionRegisterType::Flags );
+		ADD_REG( XER, 64, platform::CPURegisterType::Control );
+		ADD_CHILD_REG( XER, XER_CA, 1, 0, platform::CPURegisterType::Control );
+		ADD_CHILD_REG( XER, XER_OV, 1, 1, platform::CPURegisterType::Control );
+		ADD_CHILD_REG( XER, XER_SO, 1, 2, platform::CPURegisterType::Control );
 
-		ADD_REG( FPSCR, 32, platform::EInstructionRegisterType::Flags );
+		ADD_REG( FPSCR, 32, platform::CPURegisterType::Control );
 
-		ADD_CHILD_REG( FPSCR, FPSCR0, 4, 0, platform::EInstructionRegisterType::Flags );
-		ADD_CHILD_REG( FPSCR, FPSCR1, 4, 1, platform::EInstructionRegisterType::Flags );
-		ADD_CHILD_REG( FPSCR, FPSCR2, 4, 2, platform::EInstructionRegisterType::Flags );
-		ADD_CHILD_REG( FPSCR, FPSCR3, 4, 3, platform::EInstructionRegisterType::Flags );
-		ADD_CHILD_REG( FPSCR, FPSCR4, 4, 4, platform::EInstructionRegisterType::Flags );
-		ADD_CHILD_REG( FPSCR, FPSCR5, 4, 5, platform::EInstructionRegisterType::Flags );
-		ADD_CHILD_REG( FPSCR, FPSCR6, 4, 6, platform::EInstructionRegisterType::Flags );
-		ADD_CHILD_REG( FPSCR, FPSCR7, 4, 7, platform::EInstructionRegisterType::Flags );
+		ADD_CHILD_REG( FPSCR, FPSCR0, 4, 0, platform::CPURegisterType::Control );
+		ADD_CHILD_REG( FPSCR, FPSCR1, 4, 1, platform::CPURegisterType::Control );
+		ADD_CHILD_REG( FPSCR, FPSCR2, 4, 2, platform::CPURegisterType::Control );
+		ADD_CHILD_REG( FPSCR, FPSCR3, 4, 3, platform::CPURegisterType::Control );
+		ADD_CHILD_REG( FPSCR, FPSCR4, 4, 4, platform::CPURegisterType::Control );
+		ADD_CHILD_REG( FPSCR, FPSCR5, 4, 5, platform::CPURegisterType::Control );
+		ADD_CHILD_REG( FPSCR, FPSCR6, 4, 6, platform::CPURegisterType::Control );
+		ADD_CHILD_REG( FPSCR, FPSCR7, 4, 7, platform::CPURegisterType::Control );
 
-		ADD_CHILD_REG(FPSCR0, FPSCR0_FX, 1, 0, platform::EInstructionRegisterType::Flags);
-		ADD_CHILD_REG(FPSCR0, FPSCR0_FEX, 1, 1, platform::EInstructionRegisterType::Flags);
-		ADD_CHILD_REG(FPSCR0, FPSCR0_VX, 1, 2, platform::EInstructionRegisterType::Flags);
-		ADD_CHILD_REG(FPSCR0, FPSCR0_OX, 1, 3, platform::EInstructionRegisterType::Flags);
-		ADD_CHILD_REG(FPSCR1, FPSCR1_UX, 1, 0, platform::EInstructionRegisterType::Flags);
-		ADD_CHILD_REG(FPSCR1, FPSCR1_ZX, 1, 1, platform::EInstructionRegisterType::Flags);
-		ADD_CHILD_REG(FPSCR1, FPSCR1_XX, 1, 2, platform::EInstructionRegisterType::Flags);
-		ADD_CHILD_REG(FPSCR1, FPSCR1_VXSNAN, 1, 3, platform::EInstructionRegisterType::Flags);
-		ADD_CHILD_REG(FPSCR2, FPSCR2_VXISI, 1, 0, platform::EInstructionRegisterType::Flags);
-		ADD_CHILD_REG(FPSCR2, FPSCR2_VXIDI, 1, 1, platform::EInstructionRegisterType::Flags);
-		ADD_CHILD_REG(FPSCR2, FPSCR2_VXZDZ, 1, 2, platform::EInstructionRegisterType::Flags);
-		ADD_CHILD_REG(FPSCR2, FPSCR2_VXIMZ, 1, 3, platform::EInstructionRegisterType::Flags);
-		ADD_CHILD_REG(FPSCR3, FPSCR3_VXVC, 1, 0, platform::EInstructionRegisterType::Flags);
-		ADD_CHILD_REG(FPSCR3, FPSCR3_FR, 1, 1, platform::EInstructionRegisterType::Flags);
-		ADD_CHILD_REG(FPSCR3, FPSCR3_FI, 1, 2, platform::EInstructionRegisterType::Flags);
-		ADD_CHILD_REG(FPSCR3, FPSCR3_C, 1, 3, platform::EInstructionRegisterType::Flags);
-		ADD_CHILD_REG(FPSCR4, FPSCR4_FL, 1, 0, platform::EInstructionRegisterType::Flags);
-		ADD_CHILD_REG(FPSCR4, FPSCR4_FG, 1, 1, platform::EInstructionRegisterType::Flags);
-		ADD_CHILD_REG(FPSCR4, FPSCR4_FE, 1, 2, platform::EInstructionRegisterType::Flags);
-		ADD_CHILD_REG(FPSCR4, FPSCR4_FU, 1, 3, platform::EInstructionRegisterType::Flags);
-		ADD_CHILD_REG(FPSCR5, FPSCR5_RES, 1, 0, platform::EInstructionRegisterType::Flags);
-		ADD_CHILD_REG(FPSCR5, FPSCR5_VXSOFT, 1, 1, platform::EInstructionRegisterType::Flags);
-		ADD_CHILD_REG(FPSCR5, FPSCR5_VXSQRT, 1, 2, platform::EInstructionRegisterType::Flags);
-		ADD_CHILD_REG(FPSCR5, FPSCR5_VXCVI, 1, 3, platform::EInstructionRegisterType::Flags);
-		ADD_CHILD_REG(FPSCR6, FPSCR6_VE, 1, 0, platform::EInstructionRegisterType::Flags);
-		ADD_CHILD_REG(FPSCR6, FPSCR6_VO, 1, 1, platform::EInstructionRegisterType::Flags);
-		ADD_CHILD_REG(FPSCR6, FPSCR6_UE, 1, 2, platform::EInstructionRegisterType::Flags);
-		ADD_CHILD_REG(FPSCR6, FPSCR6_ZE, 1, 3, platform::EInstructionRegisterType::Flags);
-		ADD_CHILD_REG(FPSCR7, FPSCR7_XE, 1, 0, platform::EInstructionRegisterType::Flags);
-		ADD_CHILD_REG(FPSCR7, FPSCR7_NI, 1, 1, platform::EInstructionRegisterType::Flags);
-		ADD_CHILD_REG(FPSCR7, FPSCR7_RN0, 1, 2, platform::EInstructionRegisterType::Flags);
-		ADD_CHILD_REG(FPSCR7, FPSCR7_RN1, 1, 3, platform::EInstructionRegisterType::Flags);
+		ADD_CHILD_REG(FPSCR0, FPSCR0_FX, 1, 0, platform::CPURegisterType::Control);
+		ADD_CHILD_REG(FPSCR0, FPSCR0_FEX, 1, 1, platform::CPURegisterType::Control);
+		ADD_CHILD_REG(FPSCR0, FPSCR0_VX, 1, 2, platform::CPURegisterType::Control);
+		ADD_CHILD_REG(FPSCR0, FPSCR0_OX, 1, 3, platform::CPURegisterType::Control);
+		ADD_CHILD_REG(FPSCR1, FPSCR1_UX, 1, 0, platform::CPURegisterType::Control);
+		ADD_CHILD_REG(FPSCR1, FPSCR1_ZX, 1, 1, platform::CPURegisterType::Control);
+		ADD_CHILD_REG(FPSCR1, FPSCR1_XX, 1, 2, platform::CPURegisterType::Control);
+		ADD_CHILD_REG(FPSCR1, FPSCR1_VXSNAN, 1, 3, platform::CPURegisterType::Control);
+		ADD_CHILD_REG(FPSCR2, FPSCR2_VXISI, 1, 0, platform::CPURegisterType::Control);
+		ADD_CHILD_REG(FPSCR2, FPSCR2_VXIDI, 1, 1, platform::CPURegisterType::Control);
+		ADD_CHILD_REG(FPSCR2, FPSCR2_VXZDZ, 1, 2, platform::CPURegisterType::Control);
+		ADD_CHILD_REG(FPSCR2, FPSCR2_VXIMZ, 1, 3, platform::CPURegisterType::Control);
+		ADD_CHILD_REG(FPSCR3, FPSCR3_VXVC, 1, 0, platform::CPURegisterType::Control);
+		ADD_CHILD_REG(FPSCR3, FPSCR3_FR, 1, 1, platform::CPURegisterType::Control);
+		ADD_CHILD_REG(FPSCR3, FPSCR3_FI, 1, 2, platform::CPURegisterType::Control);
+		ADD_CHILD_REG(FPSCR3, FPSCR3_C, 1, 3, platform::CPURegisterType::Control);
+		ADD_CHILD_REG(FPSCR4, FPSCR4_FL, 1, 0, platform::CPURegisterType::Control);
+		ADD_CHILD_REG(FPSCR4, FPSCR4_FG, 1, 1, platform::CPURegisterType::Control);
+		ADD_CHILD_REG(FPSCR4, FPSCR4_FE, 1, 2, platform::CPURegisterType::Control);
+		ADD_CHILD_REG(FPSCR4, FPSCR4_FU, 1, 3, platform::CPURegisterType::Control);
+		ADD_CHILD_REG(FPSCR5, FPSCR5_RES, 1, 0, platform::CPURegisterType::Control);
+		ADD_CHILD_REG(FPSCR5, FPSCR5_VXSOFT, 1, 1, platform::CPURegisterType::Control);
+		ADD_CHILD_REG(FPSCR5, FPSCR5_VXSQRT, 1, 2, platform::CPURegisterType::Control);
+		ADD_CHILD_REG(FPSCR5, FPSCR5_VXCVI, 1, 3, platform::CPURegisterType::Control);
+		ADD_CHILD_REG(FPSCR6, FPSCR6_VE, 1, 0, platform::CPURegisterType::Control);
+		ADD_CHILD_REG(FPSCR6, FPSCR6_VO, 1, 1, platform::CPURegisterType::Control);
+		ADD_CHILD_REG(FPSCR6, FPSCR6_UE, 1, 2, platform::CPURegisterType::Control);
+		ADD_CHILD_REG(FPSCR6, FPSCR6_ZE, 1, 3, platform::CPURegisterType::Control);
+		ADD_CHILD_REG(FPSCR7, FPSCR7_XE, 1, 0, platform::CPURegisterType::Control);
+		ADD_CHILD_REG(FPSCR7, FPSCR7_NI, 1, 1, platform::CPURegisterType::Control);
+		ADD_CHILD_REG(FPSCR7, FPSCR7_RN0, 1, 2, platform::CPURegisterType::Control);
+		ADD_CHILD_REG(FPSCR7, FPSCR7_RN1, 1, 3, platform::CPURegisterType::Control);
 
-		ADD_REG( R0, 64, platform::EInstructionRegisterType::Integer );
-		ADD_REG( R1, 64, platform::EInstructionRegisterType::Integer );
-		ADD_REG( R2, 64, platform::EInstructionRegisterType::Integer );
-		ADD_REG( R3, 64, platform::EInstructionRegisterType::Integer );
-		ADD_REG( R4, 64, platform::EInstructionRegisterType::Integer );
-		ADD_REG( R5, 64, platform::EInstructionRegisterType::Integer );
-		ADD_REG( R6, 64, platform::EInstructionRegisterType::Integer );
-		ADD_REG( R7, 64, platform::EInstructionRegisterType::Integer );
-		ADD_REG( R8, 64, platform::EInstructionRegisterType::Integer );
-		ADD_REG( R9, 64, platform::EInstructionRegisterType::Integer );
-		ADD_REG( R10, 64, platform::EInstructionRegisterType::Integer );
-		ADD_REG( R11, 64, platform::EInstructionRegisterType::Integer );
-		ADD_REG( R12, 64, platform::EInstructionRegisterType::Integer );
-		ADD_REG( R13, 64, platform::EInstructionRegisterType::Integer );
-		ADD_REG( R14, 64, platform::EInstructionRegisterType::Integer );
-		ADD_REG( R15, 64, platform::EInstructionRegisterType::Integer );
-		ADD_REG( R16, 64, platform::EInstructionRegisterType::Integer );
-		ADD_REG( R17, 64, platform::EInstructionRegisterType::Integer );
-		ADD_REG( R18, 64, platform::EInstructionRegisterType::Integer );
-		ADD_REG( R19, 64, platform::EInstructionRegisterType::Integer );
-		ADD_REG( R20, 64, platform::EInstructionRegisterType::Integer );
-		ADD_REG( R21, 64, platform::EInstructionRegisterType::Integer );
-		ADD_REG( R22, 64, platform::EInstructionRegisterType::Integer );
-		ADD_REG( R23, 64, platform::EInstructionRegisterType::Integer );
-		ADD_REG( R24, 64, platform::EInstructionRegisterType::Integer );
-		ADD_REG( R25, 64, platform::EInstructionRegisterType::Integer );
-		ADD_REG( R26, 64, platform::EInstructionRegisterType::Integer );
-		ADD_REG( R27, 64, platform::EInstructionRegisterType::Integer );
-		ADD_REG( R28, 64, platform::EInstructionRegisterType::Integer );
-		ADD_REG( R29, 64, platform::EInstructionRegisterType::Integer );
-		ADD_REG( R30, 64, platform::EInstructionRegisterType::Integer );
-		ADD_REG( R31, 64, platform::EInstructionRegisterType::Integer );
+		ADD_REG( R0, 64, platform::CPURegisterType::Generic );
+		ADD_REG( R1, 64, platform::CPURegisterType::Generic );
+		ADD_REG( R2, 64, platform::CPURegisterType::Generic );
+		ADD_REG( R3, 64, platform::CPURegisterType::Generic );
+		ADD_REG( R4, 64, platform::CPURegisterType::Generic );
+		ADD_REG( R5, 64, platform::CPURegisterType::Generic );
+		ADD_REG( R6, 64, platform::CPURegisterType::Generic );
+		ADD_REG( R7, 64, platform::CPURegisterType::Generic );
+		ADD_REG( R8, 64, platform::CPURegisterType::Generic );
+		ADD_REG( R9, 64, platform::CPURegisterType::Generic );
+		ADD_REG( R10, 64, platform::CPURegisterType::Generic );
+		ADD_REG( R11, 64, platform::CPURegisterType::Generic );
+		ADD_REG( R12, 64, platform::CPURegisterType::Generic );
+		ADD_REG( R13, 64, platform::CPURegisterType::Generic );
+		ADD_REG( R14, 64, platform::CPURegisterType::Generic );
+		ADD_REG( R15, 64, platform::CPURegisterType::Generic );
+		ADD_REG( R16, 64, platform::CPURegisterType::Generic );
+		ADD_REG( R17, 64, platform::CPURegisterType::Generic );
+		ADD_REG( R18, 64, platform::CPURegisterType::Generic );
+		ADD_REG( R19, 64, platform::CPURegisterType::Generic );
+		ADD_REG( R20, 64, platform::CPURegisterType::Generic );
+		ADD_REG( R21, 64, platform::CPURegisterType::Generic );
+		ADD_REG( R22, 64, platform::CPURegisterType::Generic );
+		ADD_REG( R23, 64, platform::CPURegisterType::Generic );
+		ADD_REG( R24, 64, platform::CPURegisterType::Generic );
+		ADD_REG( R25, 64, platform::CPURegisterType::Generic );
+		ADD_REG( R26, 64, platform::CPURegisterType::Generic );
+		ADD_REG( R27, 64, platform::CPURegisterType::Generic );
+		ADD_REG( R28, 64, platform::CPURegisterType::Generic );
+		ADD_REG( R29, 64, platform::CPURegisterType::Generic );
+		ADD_REG( R30, 64, platform::CPURegisterType::Generic );
+		ADD_REG( R31, 64, platform::CPURegisterType::Generic );
 
-		ADD_REG( FR0, 64, platform::EInstructionRegisterType::FloatingPoint );
-		ADD_REG( FR1, 64, platform::EInstructionRegisterType::FloatingPoint );
-		ADD_REG( FR2, 64, platform::EInstructionRegisterType::FloatingPoint );
-		ADD_REG( FR3, 64, platform::EInstructionRegisterType::FloatingPoint );
-		ADD_REG( FR4, 64, platform::EInstructionRegisterType::FloatingPoint );
-		ADD_REG( FR5, 64, platform::EInstructionRegisterType::FloatingPoint );
-		ADD_REG( FR6, 64, platform::EInstructionRegisterType::FloatingPoint );
-		ADD_REG( FR7, 64, platform::EInstructionRegisterType::FloatingPoint );
-		ADD_REG( FR8, 64, platform::EInstructionRegisterType::FloatingPoint );
-		ADD_REG( FR9, 64, platform::EInstructionRegisterType::FloatingPoint );
-		ADD_REG( FR10, 64, platform::EInstructionRegisterType::FloatingPoint );
-		ADD_REG( FR11, 64, platform::EInstructionRegisterType::FloatingPoint );
-		ADD_REG( FR12, 64, platform::EInstructionRegisterType::FloatingPoint );
-		ADD_REG( FR13, 64, platform::EInstructionRegisterType::FloatingPoint );
-		ADD_REG( FR14, 64, platform::EInstructionRegisterType::FloatingPoint );
-		ADD_REG( FR15, 64, platform::EInstructionRegisterType::FloatingPoint );
-		ADD_REG( FR16, 64, platform::EInstructionRegisterType::FloatingPoint );
-		ADD_REG( FR17, 64, platform::EInstructionRegisterType::FloatingPoint );
-		ADD_REG( FR18, 64, platform::EInstructionRegisterType::FloatingPoint );
-		ADD_REG( FR19, 64, platform::EInstructionRegisterType::FloatingPoint );
-		ADD_REG( FR20, 64, platform::EInstructionRegisterType::FloatingPoint );
-		ADD_REG( FR21, 64, platform::EInstructionRegisterType::FloatingPoint );
-		ADD_REG( FR22, 64, platform::EInstructionRegisterType::FloatingPoint );
-		ADD_REG( FR23, 64, platform::EInstructionRegisterType::FloatingPoint );
-		ADD_REG( FR24, 64, platform::EInstructionRegisterType::FloatingPoint );
-		ADD_REG( FR25, 64, platform::EInstructionRegisterType::FloatingPoint );
-		ADD_REG( FR26, 64, platform::EInstructionRegisterType::FloatingPoint );
-		ADD_REG( FR27, 64, platform::EInstructionRegisterType::FloatingPoint );
-		ADD_REG( FR28, 64, platform::EInstructionRegisterType::FloatingPoint );
-		ADD_REG( FR29, 64, platform::EInstructionRegisterType::FloatingPoint );
-		ADD_REG( FR30, 64, platform::EInstructionRegisterType::FloatingPoint );
-		ADD_REG( FR31, 64, platform::EInstructionRegisterType::FloatingPoint );
+		ADD_REG( FR0, 64, platform::CPURegisterType::FloatingPoint );
+		ADD_REG( FR1, 64, platform::CPURegisterType::FloatingPoint );
+		ADD_REG( FR2, 64, platform::CPURegisterType::FloatingPoint );
+		ADD_REG( FR3, 64, platform::CPURegisterType::FloatingPoint );
+		ADD_REG( FR4, 64, platform::CPURegisterType::FloatingPoint );
+		ADD_REG( FR5, 64, platform::CPURegisterType::FloatingPoint );
+		ADD_REG( FR6, 64, platform::CPURegisterType::FloatingPoint );
+		ADD_REG( FR7, 64, platform::CPURegisterType::FloatingPoint );
+		ADD_REG( FR8, 64, platform::CPURegisterType::FloatingPoint );
+		ADD_REG( FR9, 64, platform::CPURegisterType::FloatingPoint );
+		ADD_REG( FR10, 64, platform::CPURegisterType::FloatingPoint );
+		ADD_REG( FR11, 64, platform::CPURegisterType::FloatingPoint );
+		ADD_REG( FR12, 64, platform::CPURegisterType::FloatingPoint );
+		ADD_REG( FR13, 64, platform::CPURegisterType::FloatingPoint );
+		ADD_REG( FR14, 64, platform::CPURegisterType::FloatingPoint );
+		ADD_REG( FR15, 64, platform::CPURegisterType::FloatingPoint );
+		ADD_REG( FR16, 64, platform::CPURegisterType::FloatingPoint );
+		ADD_REG( FR17, 64, platform::CPURegisterType::FloatingPoint );
+		ADD_REG( FR18, 64, platform::CPURegisterType::FloatingPoint );
+		ADD_REG( FR19, 64, platform::CPURegisterType::FloatingPoint );
+		ADD_REG( FR20, 64, platform::CPURegisterType::FloatingPoint );
+		ADD_REG( FR21, 64, platform::CPURegisterType::FloatingPoint );
+		ADD_REG( FR22, 64, platform::CPURegisterType::FloatingPoint );
+		ADD_REG( FR23, 64, platform::CPURegisterType::FloatingPoint );
+		ADD_REG( FR24, 64, platform::CPURegisterType::FloatingPoint );
+		ADD_REG( FR25, 64, platform::CPURegisterType::FloatingPoint );
+		ADD_REG( FR26, 64, platform::CPURegisterType::FloatingPoint );
+		ADD_REG( FR27, 64, platform::CPURegisterType::FloatingPoint );
+		ADD_REG( FR28, 64, platform::CPURegisterType::FloatingPoint );
+		ADD_REG( FR29, 64, platform::CPURegisterType::FloatingPoint );
+		ADD_REG( FR30, 64, platform::CPURegisterType::FloatingPoint );
+		ADD_REG( FR31, 64, platform::CPURegisterType::FloatingPoint );
 
-		ADD_REG( VR0, 128, platform::EInstructionRegisterType::Wide );
-		ADD_REG( VR1, 128, platform::EInstructionRegisterType::Wide );
-		ADD_REG( VR2, 128, platform::EInstructionRegisterType::Wide );
-		ADD_REG( VR3, 128, platform::EInstructionRegisterType::Wide );
-		ADD_REG( VR4, 128, platform::EInstructionRegisterType::Wide );
-		ADD_REG( VR5, 128, platform::EInstructionRegisterType::Wide );
-		ADD_REG( VR6, 128, platform::EInstructionRegisterType::Wide );
-		ADD_REG( VR7, 128, platform::EInstructionRegisterType::Wide );
-		ADD_REG( VR8, 128, platform::EInstructionRegisterType::Wide );
-		ADD_REG( VR9, 128, platform::EInstructionRegisterType::Wide );
-		ADD_REG( VR10, 128, platform::EInstructionRegisterType::Wide );
-		ADD_REG( VR11, 128, platform::EInstructionRegisterType::Wide );
-		ADD_REG( VR12, 128, platform::EInstructionRegisterType::Wide );
-		ADD_REG( VR13, 128, platform::EInstructionRegisterType::Wide );
-		ADD_REG( VR14, 128, platform::EInstructionRegisterType::Wide );
-		ADD_REG( VR15, 128, platform::EInstructionRegisterType::Wide );
-		ADD_REG( VR16, 128, platform::EInstructionRegisterType::Wide );
-		ADD_REG( VR17, 128, platform::EInstructionRegisterType::Wide );
-		ADD_REG( VR18, 128, platform::EInstructionRegisterType::Wide );
-		ADD_REG( VR19, 128, platform::EInstructionRegisterType::Wide );
-		ADD_REG( VR20, 128, platform::EInstructionRegisterType::Wide );
-		ADD_REG( VR21, 128, platform::EInstructionRegisterType::Wide );
-		ADD_REG( VR22, 128, platform::EInstructionRegisterType::Wide );
-		ADD_REG( VR23, 128, platform::EInstructionRegisterType::Wide );
-		ADD_REG( VR24, 128, platform::EInstructionRegisterType::Wide );
-		ADD_REG( VR25, 128, platform::EInstructionRegisterType::Wide );
-		ADD_REG( VR26, 128, platform::EInstructionRegisterType::Wide );
-		ADD_REG( VR27, 128, platform::EInstructionRegisterType::Wide );
-		ADD_REG( VR28, 128, platform::EInstructionRegisterType::Wide );
-		ADD_REG( VR29, 128, platform::EInstructionRegisterType::Wide );
-		ADD_REG( VR30, 128, platform::EInstructionRegisterType::Wide );
-		ADD_REG( VR31, 128, platform::EInstructionRegisterType::Wide );
-		ADD_REG( VR32, 128, platform::EInstructionRegisterType::Wide );
-		ADD_REG( VR33, 128, platform::EInstructionRegisterType::Wide );
-		ADD_REG( VR34, 128, platform::EInstructionRegisterType::Wide );
-		ADD_REG( VR35, 128, platform::EInstructionRegisterType::Wide );
-		ADD_REG( VR36, 128, platform::EInstructionRegisterType::Wide );
-		ADD_REG( VR37, 128, platform::EInstructionRegisterType::Wide );
-		ADD_REG( VR38, 128, platform::EInstructionRegisterType::Wide );
-		ADD_REG( VR39, 128, platform::EInstructionRegisterType::Wide );
-		ADD_REG( VR40, 128, platform::EInstructionRegisterType::Wide );
-		ADD_REG( VR41, 128, platform::EInstructionRegisterType::Wide );
-		ADD_REG( VR42, 128, platform::EInstructionRegisterType::Wide );
-		ADD_REG( VR43, 128, platform::EInstructionRegisterType::Wide );
-		ADD_REG( VR44, 128, platform::EInstructionRegisterType::Wide );
-		ADD_REG( VR45, 128, platform::EInstructionRegisterType::Wide );
-		ADD_REG( VR46, 128, platform::EInstructionRegisterType::Wide );
-		ADD_REG( VR47, 128, platform::EInstructionRegisterType::Wide );
-		ADD_REG( VR48, 128, platform::EInstructionRegisterType::Wide );
-		ADD_REG( VR49, 128, platform::EInstructionRegisterType::Wide );
-		ADD_REG( VR50, 128, platform::EInstructionRegisterType::Wide );
-		ADD_REG( VR51, 128, platform::EInstructionRegisterType::Wide );
-		ADD_REG( VR52, 128, platform::EInstructionRegisterType::Wide );
-		ADD_REG( VR53, 128, platform::EInstructionRegisterType::Wide );
-		ADD_REG( VR54, 128, platform::EInstructionRegisterType::Wide );
-		ADD_REG( VR55, 128, platform::EInstructionRegisterType::Wide );
-		ADD_REG( VR56, 128, platform::EInstructionRegisterType::Wide );
-		ADD_REG( VR57, 128, platform::EInstructionRegisterType::Wide );
-		ADD_REG( VR58, 128, platform::EInstructionRegisterType::Wide );
-		ADD_REG( VR59, 128, platform::EInstructionRegisterType::Wide );
-		ADD_REG( VR60, 128, platform::EInstructionRegisterType::Wide );
-		ADD_REG( VR61, 128, platform::EInstructionRegisterType::Wide );
-		ADD_REG( VR62, 128, platform::EInstructionRegisterType::Wide );
-		ADD_REG( VR63, 128, platform::EInstructionRegisterType::Wide );
-		ADD_REG( VR64, 128, platform::EInstructionRegisterType::Wide );
-		ADD_REG( VR65, 128, platform::EInstructionRegisterType::Wide );
-		ADD_REG( VR66, 128, platform::EInstructionRegisterType::Wide );
-		ADD_REG( VR67, 128, platform::EInstructionRegisterType::Wide );
-		ADD_REG( VR68, 128, platform::EInstructionRegisterType::Wide );
-		ADD_REG( VR69, 128, platform::EInstructionRegisterType::Wide );
-		ADD_REG( VR70, 128, platform::EInstructionRegisterType::Wide );
-		ADD_REG( VR71, 128, platform::EInstructionRegisterType::Wide );
-		ADD_REG( VR72, 128, platform::EInstructionRegisterType::Wide );
-		ADD_REG( VR73, 128, platform::EInstructionRegisterType::Wide );
-		ADD_REG( VR74, 128, platform::EInstructionRegisterType::Wide );
-		ADD_REG( VR75, 128, platform::EInstructionRegisterType::Wide );
-		ADD_REG( VR76, 128, platform::EInstructionRegisterType::Wide );
-		ADD_REG( VR77, 128, platform::EInstructionRegisterType::Wide );
-		ADD_REG( VR78, 128, platform::EInstructionRegisterType::Wide );
-		ADD_REG( VR79, 128, platform::EInstructionRegisterType::Wide );
-		ADD_REG( VR80, 128, platform::EInstructionRegisterType::Wide );
-		ADD_REG( VR81, 128, platform::EInstructionRegisterType::Wide );
-		ADD_REG( VR82, 128, platform::EInstructionRegisterType::Wide );
-		ADD_REG( VR83, 128, platform::EInstructionRegisterType::Wide );
-		ADD_REG( VR84, 128, platform::EInstructionRegisterType::Wide );
-		ADD_REG( VR85, 128, platform::EInstructionRegisterType::Wide );
-		ADD_REG( VR86, 128, platform::EInstructionRegisterType::Wide );
-		ADD_REG( VR87, 128, platform::EInstructionRegisterType::Wide );
-		ADD_REG( VR88, 128, platform::EInstructionRegisterType::Wide );
-		ADD_REG( VR89, 128, platform::EInstructionRegisterType::Wide );
-		ADD_REG( VR90, 128, platform::EInstructionRegisterType::Wide );
-		ADD_REG( VR91, 128, platform::EInstructionRegisterType::Wide );
-		ADD_REG( VR92, 128, platform::EInstructionRegisterType::Wide );
-		ADD_REG( VR93, 128, platform::EInstructionRegisterType::Wide );
-		ADD_REG( VR94, 128, platform::EInstructionRegisterType::Wide );
-		ADD_REG( VR95, 128, platform::EInstructionRegisterType::Wide );
-		ADD_REG( VR96, 128, platform::EInstructionRegisterType::Wide );
-		ADD_REG( VR97, 128, platform::EInstructionRegisterType::Wide );
-		ADD_REG( VR98, 128, platform::EInstructionRegisterType::Wide );
-		ADD_REG( VR99, 128, platform::EInstructionRegisterType::Wide );
-		ADD_REG( VR100, 128, platform::EInstructionRegisterType::Wide );
-		ADD_REG( VR101, 128, platform::EInstructionRegisterType::Wide );
-		ADD_REG( VR102, 128, platform::EInstructionRegisterType::Wide );
-		ADD_REG( VR103, 128, platform::EInstructionRegisterType::Wide );
-		ADD_REG( VR104, 128, platform::EInstructionRegisterType::Wide );
-		ADD_REG( VR105, 128, platform::EInstructionRegisterType::Wide );
-		ADD_REG( VR106, 128, platform::EInstructionRegisterType::Wide );
-		ADD_REG( VR107, 128, platform::EInstructionRegisterType::Wide );
-		ADD_REG( VR108, 128, platform::EInstructionRegisterType::Wide );
-		ADD_REG( VR109, 128, platform::EInstructionRegisterType::Wide );
-		ADD_REG( VR110, 128, platform::EInstructionRegisterType::Wide );
-		ADD_REG( VR111, 128, platform::EInstructionRegisterType::Wide );
-		ADD_REG( VR112, 128, platform::EInstructionRegisterType::Wide );
-		ADD_REG( VR113, 128, platform::EInstructionRegisterType::Wide );
-		ADD_REG( VR114, 128, platform::EInstructionRegisterType::Wide );
-		ADD_REG( VR115, 128, platform::EInstructionRegisterType::Wide );
-		ADD_REG( VR116, 128, platform::EInstructionRegisterType::Wide );
-		ADD_REG( VR117, 128, platform::EInstructionRegisterType::Wide );
-		ADD_REG( VR118, 128, platform::EInstructionRegisterType::Wide );
-		ADD_REG( VR119, 128, platform::EInstructionRegisterType::Wide );
-		ADD_REG( VR120, 128, platform::EInstructionRegisterType::Wide );
-		ADD_REG( VR121, 128, platform::EInstructionRegisterType::Wide );
-		ADD_REG( VR122, 128, platform::EInstructionRegisterType::Wide );
-		ADD_REG( VR123, 128, platform::EInstructionRegisterType::Wide );
-		ADD_REG( VR124, 128, platform::EInstructionRegisterType::Wide );
-		ADD_REG( VR125, 128, platform::EInstructionRegisterType::Wide );
-		ADD_REG( VR126, 128, platform::EInstructionRegisterType::Wide );
-		ADD_REG( VR127, 128, platform::EInstructionRegisterType::Wide );
+		ADD_REG( VR0, 128, platform::CPURegisterType::Wide );
+		ADD_REG( VR1, 128, platform::CPURegisterType::Wide );
+		ADD_REG( VR2, 128, platform::CPURegisterType::Wide );
+		ADD_REG( VR3, 128, platform::CPURegisterType::Wide );
+		ADD_REG( VR4, 128, platform::CPURegisterType::Wide );
+		ADD_REG( VR5, 128, platform::CPURegisterType::Wide );
+		ADD_REG( VR6, 128, platform::CPURegisterType::Wide );
+		ADD_REG( VR7, 128, platform::CPURegisterType::Wide );
+		ADD_REG( VR8, 128, platform::CPURegisterType::Wide );
+		ADD_REG( VR9, 128, platform::CPURegisterType::Wide );
+		ADD_REG( VR10, 128, platform::CPURegisterType::Wide );
+		ADD_REG( VR11, 128, platform::CPURegisterType::Wide );
+		ADD_REG( VR12, 128, platform::CPURegisterType::Wide );
+		ADD_REG( VR13, 128, platform::CPURegisterType::Wide );
+		ADD_REG( VR14, 128, platform::CPURegisterType::Wide );
+		ADD_REG( VR15, 128, platform::CPURegisterType::Wide );
+		ADD_REG( VR16, 128, platform::CPURegisterType::Wide );
+		ADD_REG( VR17, 128, platform::CPURegisterType::Wide );
+		ADD_REG( VR18, 128, platform::CPURegisterType::Wide );
+		ADD_REG( VR19, 128, platform::CPURegisterType::Wide );
+		ADD_REG( VR20, 128, platform::CPURegisterType::Wide );
+		ADD_REG( VR21, 128, platform::CPURegisterType::Wide );
+		ADD_REG( VR22, 128, platform::CPURegisterType::Wide );
+		ADD_REG( VR23, 128, platform::CPURegisterType::Wide );
+		ADD_REG( VR24, 128, platform::CPURegisterType::Wide );
+		ADD_REG( VR25, 128, platform::CPURegisterType::Wide );
+		ADD_REG( VR26, 128, platform::CPURegisterType::Wide );
+		ADD_REG( VR27, 128, platform::CPURegisterType::Wide );
+		ADD_REG( VR28, 128, platform::CPURegisterType::Wide );
+		ADD_REG( VR29, 128, platform::CPURegisterType::Wide );
+		ADD_REG( VR30, 128, platform::CPURegisterType::Wide );
+		ADD_REG( VR31, 128, platform::CPURegisterType::Wide );
+		ADD_REG( VR32, 128, platform::CPURegisterType::Wide );
+		ADD_REG( VR33, 128, platform::CPURegisterType::Wide );
+		ADD_REG( VR34, 128, platform::CPURegisterType::Wide );
+		ADD_REG( VR35, 128, platform::CPURegisterType::Wide );
+		ADD_REG( VR36, 128, platform::CPURegisterType::Wide );
+		ADD_REG( VR37, 128, platform::CPURegisterType::Wide );
+		ADD_REG( VR38, 128, platform::CPURegisterType::Wide );
+		ADD_REG( VR39, 128, platform::CPURegisterType::Wide );
+		ADD_REG( VR40, 128, platform::CPURegisterType::Wide );
+		ADD_REG( VR41, 128, platform::CPURegisterType::Wide );
+		ADD_REG( VR42, 128, platform::CPURegisterType::Wide );
+		ADD_REG( VR43, 128, platform::CPURegisterType::Wide );
+		ADD_REG( VR44, 128, platform::CPURegisterType::Wide );
+		ADD_REG( VR45, 128, platform::CPURegisterType::Wide );
+		ADD_REG( VR46, 128, platform::CPURegisterType::Wide );
+		ADD_REG( VR47, 128, platform::CPURegisterType::Wide );
+		ADD_REG( VR48, 128, platform::CPURegisterType::Wide );
+		ADD_REG( VR49, 128, platform::CPURegisterType::Wide );
+		ADD_REG( VR50, 128, platform::CPURegisterType::Wide );
+		ADD_REG( VR51, 128, platform::CPURegisterType::Wide );
+		ADD_REG( VR52, 128, platform::CPURegisterType::Wide );
+		ADD_REG( VR53, 128, platform::CPURegisterType::Wide );
+		ADD_REG( VR54, 128, platform::CPURegisterType::Wide );
+		ADD_REG( VR55, 128, platform::CPURegisterType::Wide );
+		ADD_REG( VR56, 128, platform::CPURegisterType::Wide );
+		ADD_REG( VR57, 128, platform::CPURegisterType::Wide );
+		ADD_REG( VR58, 128, platform::CPURegisterType::Wide );
+		ADD_REG( VR59, 128, platform::CPURegisterType::Wide );
+		ADD_REG( VR60, 128, platform::CPURegisterType::Wide );
+		ADD_REG( VR61, 128, platform::CPURegisterType::Wide );
+		ADD_REG( VR62, 128, platform::CPURegisterType::Wide );
+		ADD_REG( VR63, 128, platform::CPURegisterType::Wide );
+		ADD_REG( VR64, 128, platform::CPURegisterType::Wide );
+		ADD_REG( VR65, 128, platform::CPURegisterType::Wide );
+		ADD_REG( VR66, 128, platform::CPURegisterType::Wide );
+		ADD_REG( VR67, 128, platform::CPURegisterType::Wide );
+		ADD_REG( VR68, 128, platform::CPURegisterType::Wide );
+		ADD_REG( VR69, 128, platform::CPURegisterType::Wide );
+		ADD_REG( VR70, 128, platform::CPURegisterType::Wide );
+		ADD_REG( VR71, 128, platform::CPURegisterType::Wide );
+		ADD_REG( VR72, 128, platform::CPURegisterType::Wide );
+		ADD_REG( VR73, 128, platform::CPURegisterType::Wide );
+		ADD_REG( VR74, 128, platform::CPURegisterType::Wide );
+		ADD_REG( VR75, 128, platform::CPURegisterType::Wide );
+		ADD_REG( VR76, 128, platform::CPURegisterType::Wide );
+		ADD_REG( VR77, 128, platform::CPURegisterType::Wide );
+		ADD_REG( VR78, 128, platform::CPURegisterType::Wide );
+		ADD_REG( VR79, 128, platform::CPURegisterType::Wide );
+		ADD_REG( VR80, 128, platform::CPURegisterType::Wide );
+		ADD_REG( VR81, 128, platform::CPURegisterType::Wide );
+		ADD_REG( VR82, 128, platform::CPURegisterType::Wide );
+		ADD_REG( VR83, 128, platform::CPURegisterType::Wide );
+		ADD_REG( VR84, 128, platform::CPURegisterType::Wide );
+		ADD_REG( VR85, 128, platform::CPURegisterType::Wide );
+		ADD_REG( VR86, 128, platform::CPURegisterType::Wide );
+		ADD_REG( VR87, 128, platform::CPURegisterType::Wide );
+		ADD_REG( VR88, 128, platform::CPURegisterType::Wide );
+		ADD_REG( VR89, 128, platform::CPURegisterType::Wide );
+		ADD_REG( VR90, 128, platform::CPURegisterType::Wide );
+		ADD_REG( VR91, 128, platform::CPURegisterType::Wide );
+		ADD_REG( VR92, 128, platform::CPURegisterType::Wide );
+		ADD_REG( VR93, 128, platform::CPURegisterType::Wide );
+		ADD_REG( VR94, 128, platform::CPURegisterType::Wide );
+		ADD_REG( VR95, 128, platform::CPURegisterType::Wide );
+		ADD_REG( VR96, 128, platform::CPURegisterType::Wide );
+		ADD_REG( VR97, 128, platform::CPURegisterType::Wide );
+		ADD_REG( VR98, 128, platform::CPURegisterType::Wide );
+		ADD_REG( VR99, 128, platform::CPURegisterType::Wide );
+		ADD_REG( VR100, 128, platform::CPURegisterType::Wide );
+		ADD_REG( VR101, 128, platform::CPURegisterType::Wide );
+		ADD_REG( VR102, 128, platform::CPURegisterType::Wide );
+		ADD_REG( VR103, 128, platform::CPURegisterType::Wide );
+		ADD_REG( VR104, 128, platform::CPURegisterType::Wide );
+		ADD_REG( VR105, 128, platform::CPURegisterType::Wide );
+		ADD_REG( VR106, 128, platform::CPURegisterType::Wide );
+		ADD_REG( VR107, 128, platform::CPURegisterType::Wide );
+		ADD_REG( VR108, 128, platform::CPURegisterType::Wide );
+		ADD_REG( VR109, 128, platform::CPURegisterType::Wide );
+		ADD_REG( VR110, 128, platform::CPURegisterType::Wide );
+		ADD_REG( VR111, 128, platform::CPURegisterType::Wide );
+		ADD_REG( VR112, 128, platform::CPURegisterType::Wide );
+		ADD_REG( VR113, 128, platform::CPURegisterType::Wide );
+		ADD_REG( VR114, 128, platform::CPURegisterType::Wide );
+		ADD_REG( VR115, 128, platform::CPURegisterType::Wide );
+		ADD_REG( VR116, 128, platform::CPURegisterType::Wide );
+		ADD_REG( VR117, 128, platform::CPURegisterType::Wide );
+		ADD_REG( VR118, 128, platform::CPURegisterType::Wide );
+		ADD_REG( VR119, 128, platform::CPURegisterType::Wide );
+		ADD_REG( VR120, 128, platform::CPURegisterType::Wide );
+		ADD_REG( VR121, 128, platform::CPURegisterType::Wide );
+		ADD_REG( VR122, 128, platform::CPURegisterType::Wide );
+		ADD_REG( VR123, 128, platform::CPURegisterType::Wide );
+		ADD_REG( VR124, 128, platform::CPURegisterType::Wide );
+		ADD_REG( VR125, 128, platform::CPURegisterType::Wide );
+		ADD_REG( VR126, 128, platform::CPURegisterType::Wide );
+		ADD_REG( VR127, 128, platform::CPURegisterType::Wide );
+
+		// create special registers for seeing the content of the Wide registers
+		{
+			uint32_t regId = eRegister_MAX;
+			for (uint32_t reg = (uint32_t)eRegister_VR0; reg <= (uint32_t)eRegister_VR127; ++reg)
+			{
+				const auto* vreg = m_regMap[reg];
+
+				// quad parts
+				for (uint32_t i = 0; i < 2; ++i, ++regId)
+				{
+					char name[16];
+					sprintf_s(name, "%s_QWORD[%u]", vreg->GetName(), i);
+					auto* childReg = AddChildRegister(vreg->GetName(), name, -1, 64, i * 64, platform::CPURegisterType::Wide);
+				}
+
+				// dword parts
+				for (uint32_t i = 0; i < 4; ++i, ++regId)
+				{
+					char name[16];
+					sprintf_s(name, "%s_DWORD[%u]", vreg->GetName(), i);
+					auto* childReg = AddChildRegister(vreg->GetName(), name, -1, 32, i * 32, platform::CPURegisterType::Wide);
+				}
+
+				// uint16 parts
+				for (uint32_t i = 0; i < 8; ++i, ++regId)
+				{
+					char name[16];
+					sprintf_s(name, "%s_WORD[%u]", vreg->GetName(), i);
+					auto* childReg = AddChildRegister(vreg->GetName(), name, -1, 16, (i^2) * 16, platform::CPURegisterType::Wide);
+				}
+
+				// uint18 parts
+				for (uint32_t i = 0; i < 16; ++i, ++regId)
+				{
+					char name[16];
+					sprintf_s(name, "%s_BYTE[%u]", vreg->GetName(), i);
+					auto* childReg = AddChildRegister(vreg->GetName(), name, -1, 8, (i^3) * 8, platform::CPURegisterType::Wide);
+				}
+			}
+		}
 
 		#undef ADD_REG
 		#define CR0		0x08
@@ -2739,10 +2808,10 @@ CPU_XenonPPC::CPU_XenonPPC()
 		MOUNT__( lvxl, CInstructiondDecoderXenon_MEM_LOAD<128, 0, eMemoryType_VMX>() );
 
 		// VMX store
-		MOUNT__( stvlx, CInstructiondDecoderXenon_MEM_STORE<128, 0, eMemoryType_VMLX>() );
-		MOUNT__( stvlxl, CInstructiondDecoderXenon_MEM_STORE<128, 0, eMemoryType_VMLX>() );
-		MOUNT__( stvrx, CInstructiondDecoderXenon_MEM_STORE<128, 0, eMemoryType_VMRX>() );
-		MOUNT__( stvrxl, CInstructiondDecoderXenon_MEM_STORE<128, 0, eMemoryType_VMRX>() );
+		MOUNT__( stvlx, CInstructiondDecoderXenon_MEM_STORE_LVX() );
+		MOUNT__( stvlxl, CInstructiondDecoderXenon_MEM_STORE_LVX() );
+		MOUNT__( stvrx, CInstructiondDecoderXenon_MEM_STORE_RVX() );
+		MOUNT__( stvrxl, CInstructiondDecoderXenon_MEM_STORE_RVX() );
 		MOUNT__( stvx, CInstructiondDecoderXenon_MEM_STORE<128, 0, eMemoryType_VMX>() );
 		MOUNT__( stvxl, CInstructiondDecoderXenon_MEM_STORE<128, 0, eMemoryType_VMX>() );
 
@@ -2928,7 +2997,7 @@ CPU_XenonPPC::CPU_XenonPPC()
 	}
 
 	// check that all instructions are mounted
-	for (uint32 i=0; i<eInstruction_MAX; ++i)
+	/*for (uint32 i=0; i<eInstruction_MAX; ++i)
 	{
 		EInstruction op = (EInstruction)i;
 		if (!m_opMap[op])
@@ -2937,7 +3006,7 @@ CPU_XenonPPC::CPU_XenonPPC()
 			sprintf_s(s, "Missing op at slot %d\n", op );
 			OutputDebugStringA(s);
 		}
-	}
+	}*/
 }
 
 CPU_XenonPPC::~CPU_XenonPPC()

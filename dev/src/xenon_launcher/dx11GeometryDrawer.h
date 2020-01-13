@@ -54,7 +54,8 @@ public:
 	// Set the sampler to given fetch slot
 	void SetSampler(const uint32 fetchSlot, const XenonSamplerInfo& samplerInfo);
 
-public:
+	//--
+
 	// Draw prepared geometry
 	bool Draw( const class CXenonGPURegisters& regs, class IXenonGPUDumpWriter* traceDump, const struct CXenonGPUState::DrawIndexState& ds );
 

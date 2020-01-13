@@ -11,7 +11,7 @@ namespace xenon
 	//----
 
 	FileSystemEntry::FileSystemEntry(Kernel* kernel, const char* virtualPath, const wchar_t* physicalPath, class IFileSystemDevice* device)
-		: IKernelObjectRefCounted(kernel, KernelObjectType::FileSysEntry, "FileSysEntry")
+		: IKernelObjectRefCounted(kernel, KernelObjectType::FileSysEntry, nullptr)
 		, m_physicalPath(physicalPath)
 		, m_virtualPath(virtualPath)
 		, m_device(device)
@@ -27,7 +27,7 @@ namespace xenon
 		return m_device->Open(this, flags);
 	}
 
-	bool FileSystemEntry::GetInfo(xnative::X_FILE_INFO& outInfo) const
+	bool FileSystemEntry::GetInfo(lib::X_FILE_INFO& outInfo) const
 	{
 		return m_device->GetFileInfo(this, outInfo);
 	}
@@ -35,7 +35,7 @@ namespace xenon
 	//----
 
 	IFile::IFile(Kernel* kernel, const class FileSystemEntry* entry, class IFileSystemDevice* device)
-		: IKernelObjectRefCounted(kernel, KernelObjectType::FileHandle, "FileHandle")
+		: IKernelObjectRefCounted(kernel, KernelObjectType::FileHandle, nullptr)
 		, m_entry(entry)
 		, m_device(device)
 	{
@@ -63,9 +63,9 @@ namespace xenon
 		Link("devkit:", "\\Device\\Harddisk1\\Partition1");
 
 		// base path
-		if (commandline.HasOption("root"))
+		if (commandline.HasOption("fsroot"))
 		{
-			const auto nativePath = commandline.GetOptionValueW("root");
+			const auto nativePath = commandline.GetOptionValueW("fsroot");
 			GLog.Log("IO: Root for file system set to '%ls'", nativePath.c_str());
 
 			Mount(new FileSystemDevice_PathRedirection(kernel, nativeFileSystem, "\\Device\\Cdrom0", "DVD", nativePath));

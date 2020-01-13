@@ -11,6 +11,10 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <memory>
+#include <istream>
+#include <fstream>
+#include <functional>
+#include <algorithm>
 
 #ifdef _LIB
 	#define RECOMPILER_API
@@ -37,6 +41,10 @@ typedef short int16;
 typedef int int32;
 typedef __int64 int64;
 
+typedef uint64 TraceFrameID;
+
+static const uint64 INVALID_TRACE_FRAME_ID = ~0ULL;
+
 #include "output.h"
 
 namespace image
@@ -52,12 +60,10 @@ namespace code
 
 namespace trace
 {
-	class Data;
+	class DataFile;
 	class DataFrame;
-	class DataReader;
 	class MemoryHistory;
 	class MemoryHistoryReader;
-	class Registers;
 	class CallTree;
 }
 

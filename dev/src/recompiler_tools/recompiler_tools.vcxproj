@@ -39,6 +39,9 @@
     <IntDir>$(SolutionDir)..\..\_temp\$(Configuration)\$(ProjectName)\</IntDir>
     <GenerateManifest>false</GenerateManifest>
   </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <LinkIncremental>false</LinkIncremental>
+  </PropertyGroup>
   <ItemDefinitionGroup>
     <ResourceCompile>
       <AdditionalIncludeDirectories>$(SolutionDir)..\external\wxWidgets-3.1.0\include;$(SolutionDir)..\external\wxWidgets-3.1.0\include\msvc;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
@@ -88,23 +91,23 @@
       <PrecompiledHeader>Create</PrecompiledHeader>
     </ClCompile>
     <ClCompile Include="buildDialog.cpp" />
-    <ClCompile Include="callstackFrame.cpp" />
-    <ClCompile Include="callstackFunctionTree.cpp" />
-    <ClCompile Include="canvas.cpp" />
+    <ClCompile Include="callTreeList.cpp" />
+    <ClCompile Include="callTreeView.cpp" />
     <ClCompile Include="choiceDialog.cpp" />
     <ClCompile Include="config.cpp" />
     <ClCompile Include="configManager.cpp" />
     <ClCompile Include="eventDispatcher.cpp" />
     <ClCompile Include="eventListener.cpp" />
-    <ClCompile Include="fileDialog.cpp" />
     <ClCompile Include="findSymbolDialog.cpp" />
+    <ClCompile Include="memoryHistoryView.cpp" />
+    <ClCompile Include="memoryTraceView.cpp" />
     <ClCompile Include="projectImageTab.cpp" />
     <ClCompile Include="projectMainTab.cpp" />
+    <ClCompile Include="projectTraceTab.cpp" />
     <ClCompile Include="projectWindow.cpp" />
     <ClCompile Include="gotoAddressDialog.cpp" />
     <ClCompile Include="htmlBuilder.cpp" />
     <ClCompile Include="logWindow.cpp" />
-    <ClCompile Include="memoryFrame.cpp" />
     <ClCompile Include="memoryView.cpp" />
     <ClCompile Include="projectAddressHistory.cpp" />
     <ClCompile Include="projectDynamicTraceData.cpp" />
@@ -113,12 +116,13 @@
     <ClCompile Include="progressDialog.cpp" />
     <ClCompile Include="project.cpp" />
     <ClCompile Include="projectMemoryView.cpp" />
-    <ClCompile Include="projectTraceData.cpp" />
+    <ClCompile Include="horizontalView.cpp" />
     <ClCompile Include="registerView.cpp" />
     <ClCompile Include="startWindow.cpp" />
-    <ClCompile Include="timeMachineFrame.cpp" />
     <ClCompile Include="timeMachineView.cpp" />
     <ClCompile Include="traceInfoView.cpp" />
+    <ClCompile Include="traceMemoryView.cpp" />
+    <ClCompile Include="treelistctrl.cpp" />
     <ClCompile Include="utils.cpp" />
     <ClCompile Include="widgetHelpers.cpp" />
   </ItemGroup>
@@ -127,17 +131,18 @@
     <ClInclude Include="bitmaps.h" />
     <ClInclude Include="build.h" />
     <ClInclude Include="buildDialog.h" />
-    <ClInclude Include="callstackFrame.h" />
-    <ClInclude Include="callstackFunctionTree.h" />
-    <ClInclude Include="canvas.h" />
+    <ClInclude Include="callTreeList.h" />
+    <ClInclude Include="callTreeView.h" />
     <ClInclude Include="choiceDialog.h" />
     <ClInclude Include="config.h" />
     <ClInclude Include="configManager.h" />
     <ClInclude Include="eventDispatcher.h" />
     <ClInclude Include="eventListener.h" />
-    <ClInclude Include="fileDialog.h" />
     <ClInclude Include="findSymbolDialog.h" />
+    <ClInclude Include="memoryHistoryView.h" />
+    <ClInclude Include="memoryTraceView.h" />
     <ClInclude Include="projectImageTab.h" />
+    <ClInclude Include="projectTraceTab.h" />
     <ClInclude Include="projectWindow.h" />
     <ClInclude Include="gotoAddressDialog.h" />
     <ClInclude Include="htmlBuilder.h" />
@@ -150,14 +155,14 @@
     <ClInclude Include="progressDialog.h" />
     <ClInclude Include="project.h" />
     <ClInclude Include="projectMemoryView.h" />
-    <ClInclude Include="projectTraceData.h" />
+    <ClInclude Include="horizontalView.h" />
     <ClInclude Include="registerView.h" />
     <ClInclude Include="resource.h" />
     <ClInclude Include="startWindow.h" />
-    <ClInclude Include="timeMachineFrame.h" />
     <ClInclude Include="timeMachineView.h" />
     <ClInclude Include="traceInfoView.h" />
-    <ClInclude Include="memoryFrame.h" />
+    <ClInclude Include="traceMemoryView.h" />
+    <ClInclude Include="treelistctrl.h" />
     <ClInclude Include="utils.h" />
     <ClInclude Include="widgetHelpers.h" />
     <ClInclude Include="projectMainTab.h" />
